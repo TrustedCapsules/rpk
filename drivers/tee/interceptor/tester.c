@@ -99,7 +99,7 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
     // TODO: Perform capsule logic
 
 open_out:
-    printk("Interceptor open(): %s(%d) %d\n", current->comm, fd, current->tgid);
+    // printk("Interceptor open(): %s(%d) %d\n", current->comm, fd, current->tgid);
     return fd;
 }
 
@@ -113,7 +113,7 @@ asmlinkage int close(int fd) {
     // TODO: perform capsule logic
 
 close_out:
-    printk("Interceptor close(): %s(%d) %d\n", current->comm, fd, current->tgid);
+    // printk("Interceptor close(): %s(%d) %d\n", current->comm, fd, current->tgid);
     return (*sys_close_ptr)(fd);
 }
 
@@ -124,7 +124,7 @@ asmlinkage int lstat(const char *pathname, struct stat *buf) {
 
     // TODO: perform capsule logic
 
-    printk("Interceptor lstat(): %s(%s) %d\n", current->comm, pathname, current->tgid);
+    // printk("Interceptor lstat(): %s(%s) %d\n", current->comm, pathname, current->tgid);
     return ret;
 }
 
@@ -134,7 +134,7 @@ asmlinkage int stat(const char *pathname, struct stat *buf) {
 
     // TODO: perform capsule logic
 
-    printk("Interceptor stat(): %s(%s) %d\n", current->comm, pathname, current->tgid);
+    // printk("Interceptor stat(): %s(%s) %d\n", current->comm, pathname, current->tgid);
     return ret;
 }
 
@@ -144,7 +144,7 @@ asmlinkage int newfstatat(int dirfd, const char *pathname, struct stat *buf,
 
     // TODO: perform capsule logic
 
-    printk("Interceptor newfstatat(): %s(%s) %d\n", current->comm, pathname, current->tgid);
+    // printk("Interceptor newfstatat(): %s(%s) %d\n", current->comm, pathname, current->tgid);
     return (*sys_newfstatat_ptr)(dirfd, pathname, buf, flags);
 }
 
@@ -158,7 +158,7 @@ asmlinkage int fstat(int fd, struct stat *buf) {
 
     // TODO: perform capsule logic
 
-    printk("Interceptor fstat(): %s(%d) %d\n", current->comm, fd, current->tgid);
+    // printk("Interceptor fstat(): %s(%d) %d\n", current->comm, fd, current->tgid);
 
 fstat_out:
     return ret;
@@ -174,7 +174,7 @@ asmlinkage off_t lseek(int fd, off_t offset, int whence) {
 
     ret = (*sys_lseek_ptr)(fd, offset, whence);
 
-    printk("Interceptor lseek(): %s(%d) %d\n", current->comm, fd, current->tgid);
+    // printk("Interceptor lseek(): %s(%d) %d\n", current->comm, fd, current->tgid);
 lseek_out:
     return ret;
 }
@@ -189,7 +189,7 @@ asmlinkage ssize_t pread64(int fd, void *buf, size_t count, off_t offset) {
 
     ret = (*sys_pread64_ptr)(fd, buf, count, offset);
 
-    printk("Interceptor pread64(): %s(%d) %d\n", current->comm, fd, current->tgid);
+    // printk("Interceptor pread64(): %s(%d) %d\n", current->comm, fd, current->tgid);
 pread64_out:
     return ret;
 }
@@ -204,7 +204,7 @@ asmlinkage ssize_t read(int fd, void *buf, size_t count) {
 
     ret = (*sys_read_ptr)(fd, buf, count);
 
-    printk("Interceptor read(): %s(%d) %d\n", current->comm, fd, current->tgid);
+    // printk("Interceptor read(): %s(%d) %d\n", current->comm, fd, current->tgid);
 read_out:
     return ret;
 }
@@ -219,7 +219,7 @@ asmlinkage ssize_t write(int fd, const void *buf, size_t count) {
 
     ret = (*sys_write_ptr)(fd, buf, count);
 
-    printk("Interceptor write(): %s(%d) %d\n", current->comm, fd, current->tgid);
+    // printk("Interceptor write(): %s(%d) %d\n", current->comm, fd, current->tgid);
     return ret;
 }
 
@@ -230,7 +230,7 @@ asmlinkage void exit(int status) {
 
     // TODO: perform capsule logic
 
-    printk("Interceptor exit(): %s(%d) %d\n", current->comm, status, current->tgid);
+    // printk("Interceptor exit(): %s(%d) %d\n", current->comm, status, current->tgid);
 exit_out:
     (*sys_exit_ptr)(status);
 }
@@ -294,17 +294,47 @@ static void replace_sys_calls(unsigned long long *tbl) {
     // with QEMU
     //printk(KERN_ALERT "Address of last syscall %x, index %x\n", (unsigned long long) (tbl+(__NR_syscalls-1)), __NR_syscalls-1);
     unsigned long addr = 0;
-    sys_openat_addr = (func_ptr)*(tbl+__NR_openat);
+    // sys_open_addr = (func_ptr)*(tbl + __NR_open ); // QEMU
+    // sys_lstat_addr      = (func_ptr)*(tbl + __NR_lstat); // QEMU
+    // sys_stat_addr       = (func_ptr)*(tbl + __NR_stat); // QEMU
+    sys_openat_addr     = (func_ptr)*(tbl + __NR_openat);
+    sys_close_addr      = (func_ptr)*(tbl + __NR_close);
+    sys_read_addr       = (func_ptr)*(tbl + __NR_read);
+    sys_write_addr      = (func_ptr)*(tbl + __NR_write);
+    sys_lseek_addr      = (func_ptr)*(tbl + __NR_lseek);
+    sys_exit_group_addr = (func_ptr)*(tbl + __NR_exit_group);
+    sys_fstat_addr      = (func_ptr)*(tbl + __NR_fstat);
+    sys_pread64_addr    = (func_ptr)*(tbl + __NR_pread64);
+    sys_newfstatat_addr = (func_ptr)*(tbl + __NR_newfstatat);
     printk(KERN_ALERT "REPLACE: Address of original openat (%lx)\n", (unsigned long) sys_openat_addr);
 
     // Replace with our own
     addr = (unsigned long) (tbl+(__NR_openat));
 
+    printk(KERN_ALERT "REPLACE: addresses to replace:");
+    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_openat));
+    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_close));
+    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_read));
+    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_write));
+    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_lseek));
+    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_exit_group));
+    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_fstat));
+    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_pread64));
+    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_newfstatat));
+
     printk(KERN_ALERT "REPLACE: Setting addr (%lx) to rw\n", addr);
     // set_memory_rw does not work because apply_to_page_range (called by it) uses pgd_offset instead of pgd_offset_k
     set_pte_rw(addr);
     printk(KERN_ALERT "REPLACE: Replacing with our function (%p)\n", (unsigned long*) openat);
-    *(tbl + __NR_openat) = (unsigned long*) openat;
+    *(tbl + __NR_openat)        = (func_ptr)openat;
+    *(tbl + __NR_close)         = (func_ptr)close;
+    *(tbl + __NR_read)          = (func_ptr)read;
+    *(tbl + __NR_write)         = (func_ptr)write;
+    *(tbl + __NR_lseek)         = (func_ptr)lseek;
+    *(tbl + __NR_exit_group)    = (func_ptr)exit;
+    *(tbl + __NR_fstat)         = (func_ptr)fstat;
+    *(tbl + __NR_newfstatat)    = (func_ptr)newfstatat;
+    *(tbl + __NR_pread64)       = (func_ptr)pread64;
     printk(KERN_ALERT "REPLACE: Setting addr (%lx) to ro\n", addr);
     set_pte_ro(addr);
     printk(KERN_ALERT "REPLACE: Finished, openat: %lx\n", (unsigned long) tbl[__NR_openat]);
@@ -316,7 +346,27 @@ static void restore_sys_calls(unsigned long long *tbl) {
     printk(KERN_ALERT "RESTORE: Setting addr (%lx) to rw\n", addr);
     set_pte_rw(addr);
     printk(KERN_ALERT "RESTORE: Replacing with old function (%lx)\n", (unsigned long) sys_openat_addr);
-    *(tbl + __NR_openat) = sys_openat_addr;
+    // *(tbl + __NR_open)       = sys_open_addr;
+    *(tbl + __NR_openat)        = sys_openat_addr;
+    printk(KERN_ALERT "\tDone... openat\n");
+    *(tbl + __NR_close)         = sys_close_addr;
+    printk(KERN_ALERT "\tDone... close\n");
+    *(tbl + __NR_read)          = sys_read_addr;
+    printk(KERN_ALERT "\tDone... read\n");
+    *(tbl + __NR_write)         = sys_write_addr;
+    printk(KERN_ALERT "\tDone... write\n");
+    *(tbl + __NR_lseek)         = sys_lseek_addr;
+    printk(KERN_ALERT "\tDone... lseek\n");
+    *(tbl + __NR_fstat)         = sys_fstat_addr;
+    printk(KERN_ALERT "\tDone... fstat\n");
+    // *(tbl + __NR_stat)       = sys_stat_addr;
+    // *(tbl + __NR_lstat)      = sys_lstat_addr;
+    *(tbl + __NR_newfstatat)    = sys_newfstatat_addr;
+    printk(KERN_ALERT "\tDone... newfstatat\n");
+    *(tbl + __NR_pread64)       = sys_pread64_addr;
+    printk(KERN_ALERT "\tDone... pread64\n");
+    *(tbl + __NR_exit_group)    = sys_exit_group_addr;
+    printk(KERN_ALERT "\tDone... exit\n");
     printk(KERN_ALERT "RESTORE: Setting addr (%lx) to ro\n", addr);
     set_pte_ro(addr);
     printk(KERN_ALERT "RESTORE: Finished, openat: %lx\n", (unsigned long) tbl[__NR_openat]);

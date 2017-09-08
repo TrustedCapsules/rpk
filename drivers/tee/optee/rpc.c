@@ -23,6 +23,9 @@
 #include "optee_private.h"
 #include "optee_smc.h"
 
+#define FAKE_LONGITUDE  10321
+#define FAKE_LATITUDE   2134
+
 struct wq_entry {
 	struct list_head link;
 	struct completion c;
@@ -58,6 +61,23 @@ static void handle_rpc_func_cmd_get_time(struct optee_msg_arg *arg)
 	return;
 bad:
 	arg->ret = TEEC_ERROR_BAD_PARAMETERS;
+}
+
+static void handle_rpc_func_cmd_get_gps(struct optee_msg_arg *arg)
+{
+    if (arg->num_params != 1)
+        goto bad;
+    if ((arg->params[0].attr & OPTEE_MSG_ATTR_TYPE_MASK) !=
+            OPTEE_MSG_ATTR_TYPE_VALUE_OUTPUT)
+        goto bad;
+
+    arg->params[0].u.value.a = FAKE_LONGITUDE;
+    arg->params[0].u.value.b = FAKE_LATITUDE;
+
+    arg->ret = TEEC_SUCCESS;
+    return;
+bad:
+    arg->ret = TEEC_ERROR_BAD_PARAMETERS;
 }
 
 static struct wq_entry *wq_entry_get(struct optee_wait_queue *wq, u32 key)
@@ -383,7 +403,10 @@ static void handle_rpc_func_cmd(struct tee_context *ctx, struct optee *optee,
 	case OPTEE_MSG_RPC_CMD_BENCH_REG:
 		handle_rpc_func_cmd_bm_reg(arg);
 		break;
-	default:
+    case OPTEE_MSG_RPC_CMD_GET_GPS:
+        handle_rpc_func_cmd_get_gps(arg);
+        break;
+    default:
 		handle_rpc_supp_cmd(ctx, arg);
 	}
 }
