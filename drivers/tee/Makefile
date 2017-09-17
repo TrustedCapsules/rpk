@@ -1,5 +1,3 @@
-$(info $$CONFIG_HIKEY is [${CONFIG_HIKEY}])
-
 obj-$(CONFIG_TEE) += tee.o
 tee-objs += tee_core.o
 tee-objs += tee_shm.o

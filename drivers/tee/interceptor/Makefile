@@ -23,7 +23,6 @@ interceptor-objs := \
 	tester.o \
 	util.o \
 
-$(info $$HIKEY is [$(HIKEY)])
 #$(info $$M is [${M}])
 #$(info $$CC is [${CC}])
 
