@@ -22,6 +22,12 @@
 #include "optee_private.h"
 #include "optee_smc.h"
 #include "optee_bench.h"
+#include "optee_breakdown.h"
+
+volatile unsigned long long cnt_b1 = 0;
+volatile unsigned long long cnt_b2 = 0;
+volatile int curr_ts = 5;
+struct benchmarking_driver driver_ts[6];
 
 struct optee_call_waiter {
 	struct list_head list_node;
@@ -140,7 +146,8 @@ u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg)
 
 	param.a0 = OPTEE_SMC_CALL_WITH_ARG;
 	reg_pair_from_64(&param.a1, &param.a2, parg);
-	/* Initialize waiter */
+    
+    /* Initialize waiter */
 	optee_cq_wait_init(&optee->call_queue, &w);
 	while (true) {
 		struct arm_smccc_res res;
@@ -166,6 +173,7 @@ u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg)
 			param.a3 = res.a3;
 			optee_handle_rpc(ctx, &param);
 		} else {
+			driver_ts[curr_ts].rpc_cmd_count++;
 			ret = res.a0;
 			break;
 		}
@@ -225,6 +233,21 @@ int optee_open_session(struct tee_context *ctx,
 	struct optee_msg_arg *msg_arg;
 	phys_addr_t msg_parg;
 	struct optee_session *sess = NULL;
+
+	//printk( "OPEN SESSION, clearing driver_ts\n" );
+	memset( (void*) &driver_ts, 0, sizeof( driver_ts ) );
+	//for( i = 0; i < 5 ; i++ ) {
+	//printk( "%d: %llu %llu %llu %llu %llu %llu %llu\n", i,
+	//		driver_ts[i].module_op, 
+	//		driver_ts[i].rpc_peripheral_count,
+	//		driver_ts[i].rpc_shm_count, 
+	//		driver_ts[i].rpc_cmd_count, 
+	//		driver_ts[i].rpc_fs_count, 
+	//		driver_ts[i].rpc_net_count, 
+	//		driver_ts[i].rpc_other_count );	
+	//}		
+	cnt_b1 = 0;
+	cnt_b2 = 0;
 
 	/* +2 for the meta parameters added below */
 	shm = get_msg_arg(ctx, arg->num_params + 2, &msg_arg, &msg_parg);
@@ -294,6 +317,7 @@ int optee_close_session(struct tee_context *ctx, u32 session)
 	struct optee_msg_arg *msg_arg;
 	phys_addr_t msg_parg;
 	struct optee_session *sess;
+    int i;
 
 	/* Check that the session is valid and remove it from the list */
 	mutex_lock(&ctxdata->mutex);
@@ -312,6 +336,17 @@ int optee_close_session(struct tee_context *ctx, u32 session)
 	msg_arg->cmd = OPTEE_MSG_CMD_CLOSE_SESSION;
 	msg_arg->session = session;
 	optee_do_call_with_arg(ctx, msg_parg);
+
+	for( i = 0; i < 5 ; i++ ) {
+	printk( "%d: %llu %llu %llu %llu %llu %llu %llu\n", i,
+			driver_ts[i].module_op, 
+			driver_ts[i].rpc_peripheral_count,
+			driver_ts[i].rpc_shm_count, 
+			driver_ts[i].rpc_cmd_count, 
+			driver_ts[i].rpc_fs_count, 
+			driver_ts[i].rpc_net_count, 
+			driver_ts[i].rpc_other_count );	
+	}
 
 	tee_shm_free(shm);
 	return 0;

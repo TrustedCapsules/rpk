@@ -22,9 +22,15 @@
 #include "optee_bench.h"
 #include "optee_private.h"
 #include "optee_smc.h"
+#include "optee_breakdown.h"
 
 #define FAKE_LONGITUDE  10321
 #define FAKE_LATITUDE   2134
+
+volatile extern unsigned long long cnt_b1;
+volatile extern unsigned long long cnt_b2;
+volatile extern int curr_ts;
+extern struct benchmarking_driver driver_ts[6];
 
 struct wq_entry {
 	struct list_head link;
@@ -189,6 +195,15 @@ static void handle_rpc_supp_cmd(struct tee_context *ctx,
 		arg->ret = TEEC_ERROR_BAD_PARAMETERS;
 		goto out;
 	}
+
+    switch(arg->cmd) {
+    case OPTEE_MSG_RPC_CMD_LOAD_TA:
+        driver_ts[curr_ts].rpc_other_count++;
+    case OPTEE_MSG_RPC_CMD_FS:
+        driver_ts[curr_ts].rpc_fs_count++;
+    case OPTEE_MSG_RPC_CMD_NETWORK:
+        driver_ts[curr_ts].rpc_net_count++;
+    }
 
 	arg->ret = optee_supp_thrd_req(ctx, arg->cmd, arg->num_params, params);
 
@@ -386,24 +401,30 @@ static void handle_rpc_func_cmd(struct tee_context *ctx, struct optee *optee,
 
 	switch (arg->cmd) {
 	case OPTEE_MSG_RPC_CMD_GET_TIME:
+        driver_ts[curr_ts].rpc_peripheral_count++;
 		handle_rpc_func_cmd_get_time(arg);
 		break;
 	case OPTEE_MSG_RPC_CMD_WAIT_QUEUE:
+        driver_ts[curr_ts].rpc_peripheral_count++;
 		handle_rpc_func_cmd_wq(optee, arg);
 		break;
 	case OPTEE_MSG_RPC_CMD_SUSPEND:
+        driver_ts[curr_ts].rpc_other_count++;
 		handle_rpc_func_cmd_wait(arg);
 		break;
 	case OPTEE_MSG_RPC_CMD_SHM_ALLOC:
+        driver_ts[curr_ts].rpc_shm_count++;
 		handle_rpc_func_cmd_shm_alloc(ctx, arg);
 		break;
 	case OPTEE_MSG_RPC_CMD_SHM_FREE:
+        driver_ts[curr_ts].rpc_shm_count++;
 		handle_rpc_func_cmd_shm_free(ctx, arg);
 		break;
 	case OPTEE_MSG_RPC_CMD_BENCH_REG:
 		handle_rpc_func_cmd_bm_reg(arg);
 		break;
     case OPTEE_MSG_RPC_CMD_GET_GPS:
+        driver_ts[curr_ts].rpc_peripheral_count++;
         handle_rpc_func_cmd_get_gps(arg);
         break;
     default:
@@ -427,6 +448,7 @@ void optee_handle_rpc(struct tee_context *ctx, struct optee_rpc_param *param)
 
 	switch (OPTEE_SMC_RETURN_GET_RPC_FUNC(param->a0)) {
 	case OPTEE_SMC_RPC_FUNC_ALLOC:
+        driver_ts[curr_ts].rpc_shm_count++;
 		shm = tee_shm_alloc(ctx, param->a1, TEE_SHM_MAPPED);
 		if (!IS_ERR(shm) && !tee_shm_get_pa(shm, 0, &pa)) {
 			reg_pair_from_64(&param->a1, &param->a2, pa);
@@ -440,10 +462,12 @@ void optee_handle_rpc(struct tee_context *ctx, struct optee_rpc_param *param)
 		}
 		break;
 	case OPTEE_SMC_RPC_FUNC_FREE:
+        driver_ts[curr_ts].rpc_shm_count++;
 		shm = reg_pair_to_ptr(param->a1, param->a2);
 		tee_shm_free(shm);
 		break;
 	case OPTEE_SMC_RPC_FUNC_FOREIGN_INTR:
+        driver_ts[curr_ts].rpc_other_count++;
 		/*
 		 * A foreign interrupt was raised while secure world was
 		 * executing, since they are handled in Linux a dummy RPC is

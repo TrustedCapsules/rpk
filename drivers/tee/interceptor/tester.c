@@ -19,6 +19,7 @@
 #include <asm/pgtable.h>
 
 #include "../tee_private.h"
+#include "../optee/optee_breakdown.h"
 
 #include "helper.h"
 #include "util.h"
@@ -27,11 +28,7 @@
 struct tee_context *ctx;
 
 /* Address of system call table */
-// #ifdef HIKEY
-// unsigned long long *sys_call_table = (void*) 0xffffffc000b85000;
-// #else
 unsigned long long *sys_call_table = NULL;
-// #endif
 
 /* Function pointers to original sys calls */
 func_ptr sys_open_addr, // QEMU
@@ -54,6 +51,10 @@ func_ptr sys_open_addr, // QEMU
  * It could be that at some point in the future, it would
  * be a good idea to use RCU (read-copy-update) instead of
  * spin_locks.
+ *
+ * TODO: check if proc_lock is necessary. If the same process
+ * calling syscalls on different files, we only need to lock
+ * for the reference count modification.
  */
 DEFINE_MUTEX(sess_lock);
 DEFINE_SPINLOCK(proc_lock);
@@ -73,15 +74,16 @@ DEFINE_HASHTABLE(proc_table, 10);
  * Linuxdriver should also handle concurrent calls into TrustZone.
  * That is why we do not have locks for this data structure.
  * However, this again is not well tested for now. 
- *
- * TODO: double check the TEEC_OpenSession() and driver
- * assumptions.
  */
 DEFINE_HASHTABLE(sess_table, 10);
 
+volatile unsigned long long cnt_b1 = 0;
+volatile unsigned long long cnt_b2 = 0;
+volatile int curr_ts = 5;
+struct benchmarking_driver driver_ts[6];
+
 
 /* RW/RO stuff
- *
  */
 pgprot_t ro_clear_mask = __pgprot(PTE_WRITE);
 pgprot_t ro_set_mask = __pgprot(PTE_RDONLY);
@@ -90,12 +92,140 @@ pgprot_t rw_clear_mask = __pgprot(PTE_RDONLY);
 
 // Our syscalls
 asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
-    sys_openat_type sys_openat_ptr = (sys_openat_type) sys_openat_addr;
+    // TEE parameters
+    // uint32_t*       sess;
+
+    // Breakdown params
+    // unsigned long long  cnt_a1, cnt_a2;
+    // bool                record = false;
+
+    // Other params
+    // sys_close_type      sys_close_ptr = (sys_close_type) sys_close_add;
+    // char*               pwd_path = kmalloc(PATH_MAX - strlen(file_name), GFP_KERNEL);
+    // char*               abs_file_name;
+    // char*               path_ptr;
+    int                 pwd_len = 0, abs_len = strlen(file_name) + 1, fd = -1, id = 0, found = 0;
+    // uint32_t            err_origin;
+    // struct session*     curr_session = NULL;
+    // struct process*     curr_proc = NULL;
+    // struct fd_struct*   curr_fd_struct = NULL;
+    // bool                truncate = (flags & O_TRUNC) &&
+    //                                (flags & O_RDWR || flags & O_WRONLY);
+    // bool                iscap = is_capsule(file_name, &id);
 
     // TODO: add other variables and check for truncate flag
+    //
+    // Check to see if there is a truncate flag, this messes with the TC header, so we
+    // need to override it.
+    // if (is_cap && truncate) {
+    //     flags = flags & (~O_TRUNC);
+    // }
 
-    int fd = (*sys_openat_ptr)(dirfd, file_name, flags, mode);
+    // TODO: testing remove when building call
+    // if (iscap) {
+        curr_ts = 0;
+    // }
 
+    sys_openat_type     sys_openat_ptr = (sys_openat_type) sys_openat_addr;
+    fd = (*sys_openat_ptr)(dirfd, file_name, flags, mode);
+
+    // int res = TEE_OpenSession( &ctx, sess, &uuid, TEEC_LOGIN_PUBLIC, 
+    //                             NULL, &err_origin );
+    // printk("Open session result: %d\n", res);
+    // printk("Session id: %d\n", *sess);
+/*
+    // Error check the open
+    if (fd < 0) {
+        fd = -1;
+    }
+
+    if (fd >= 0 && strncmp(_tee_supp_app_name, current->comm,
+                           strlen(_tee_supp_app_name)) && is_cap) {
+        // Breakdown code (set the operation to open - 0) and set record to true
+        curr_ts = 0;
+        record = true;
+
+        if (file_name[0] != '/') {
+            path_ptr = get_pwd_path(pwd_path, PATH_MAX, &pwd_len);
+            if (pwd_len < 0) {
+                printk("Interceptor open(): current->comm %s "
+                        " pwd path not found\n", current->comm);
+                goto open_out;
+            }
+            abs_len += pwd_len + 1;
+        }
+
+        abs_file_name = kmalloc(abs_len, GFP_KERNEL);
+        if (pwd_len > 0) {
+            memcpy(abs_file_name, path_ptr, pwd_len);
+            abs_file_name[pwd_len] = '/';
+            pwd_len++;
+        }
+
+        strcpy(abs_file_name + pwd_len, file_name);
+
+        // Lock the session table 
+        mutex_lock(&sess_lock);
+
+        // Look through the table to see if a session already exists for
+        // this capsule
+        hash_for_each_possible(sess_table, curr_sess, hash_list, id) {
+            if (curr_sess->id == id) {
+                kfree(abs_file_name);
+                abs_file_name = curr_sess->abs_name;
+                found = 1;
+                break;
+            }
+        }
+
+        // No matching session found, create one
+        if (found != 1) {
+            // Call open session
+
+            cnt_a2 = read_cntpct();
+            driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 +
+                                            cnt_a2 - cnt_b2;
+            cnt_a1 = read_cntpct();
+            cnt_b1 = 0;
+            cnt_b2 = 0;
+
+            if (rc) {
+                (*sys_close_ptr)(fd); // Close file
+                fd = -1;
+                printk("Interceptor open(): current->comm %s "
+                       "tee_client_open_session failed rc %x\n",
+                       current->comm, rc);
+                mutex_unlock(&sess_lock);
+                goto open_out;
+            }
+
+        } else { // Found session
+            sess = curr_sess->sess;
+        }
+
+        // Make capsule open args
+        memset(&arg, 0, sizeof(arg));
+        arg.func = CAPSULE_OPEN;
+        arg.session = sess;
+        arg.num_params = 2;
+
+        params = kmalloc_array(arg->num_params, sizeof(struct tee_param),
+                        GFP_KERNEL);
+        if (!params) {
+            //TEEC_ERROR_OUT_OF_MEMORY
+        }
+
+        // Declare shared memory for file name
+        file_shm = tee_shm_alloc(&ctx, strlen(abs_file_name), TEE_SHM_MAPPED);
+        params[0].attr = TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INPUT;
+        params[0].u.memref.shm = shm;
+        params[0].u.memref.size = strlen(abs_file_name);
+
+        params[1].attr = TEE_IOCLT_PARAM_ATTR_TYPE_VALUE_INPUT;
+        params[1].u.value.a = current->tgid;
+        params[1].u.value.b = fd;
+    }
+    */
     // TODO: Perform capsule logic
 
 open_out:
@@ -108,6 +238,7 @@ asmlinkage int open(const char* file_name, int flags, int mode) {
 }
 
 asmlinkage int close(int fd) {
+    curr_ts = 1;
     sys_close_type  sys_close_ptr = (sys_close_type)sys_close_addr;
 
     // TODO: perform capsule logic
@@ -167,6 +298,7 @@ fstat_out:
 asmlinkage off_t lseek(int fd, off_t offset, int whence) {
     sys_lseek_type  sys_lseek_ptr = (sys_lseek_type) sys_lseek_addr;
     off_t ret = 0;
+    curr_ts = 2;
 
     // TODO: add other variables
 
@@ -198,6 +330,8 @@ asmlinkage ssize_t read(int fd, void *buf, size_t count) {
     sys_read_type   sys_read_ptr = (sys_read_type) sys_read_addr;
     ssize_t ret = 0;
 
+    curr_ts = 3;
+
     // TODO: add other variables
 
     // TODO: perform capsule logic
@@ -212,6 +346,8 @@ read_out:
 asmlinkage ssize_t write(int fd, const void *buf, size_t count) {
     sys_write_type  sys_write_ptr = (sys_write_type) sys_write_addr;
     ssize_t ret = 0;
+
+    curr_ts = 4;
 
     // TODO: add other variables
 
@@ -243,13 +379,13 @@ static int optee_match(struct tee_ioctl_version_data *data, const void *vers) {
 /* Sets ONE page to rw. Need to figure out how to do a range.
  * Might not be able to.
  */
-static void set_pte_rw(unsigned long addr) {
+static void set_pte_rw(unsigned long long addr) {
     pgd_t *pgd_k = pgd_offset_k(addr);
     pud_t *pud_k = pud_offset(pgd_k, addr);
     pmd_t *pmd_k = pmd_offset(pud_k, addr);
     pte_t *pte_k = pte_offset_kernel(pmd_k, addr);
 
-    // printk(KERN_ALERT "*pgd_k = %p, val_k = %x\n", pgd_k, pgd_k->pgd);
+    printk(KERN_ALERT "addr = %lx, *pgd_k = %p, val_k = %lx\n", addr, pgd_k, pgd_k->pgd);
     // Make a copy
     pte_t pte = *pte_k;
 
@@ -267,7 +403,7 @@ static void set_pte_rw(unsigned long addr) {
 /* Sets ONE page to ro. Need to figure out how to do a range.
  * Might not be able to.
  */
-static void set_pte_ro(unsigned long addr) {
+static void set_pte_ro(unsigned long long addr) {
     pgd_t *pgd_k = pgd_offset_k(addr);
     pud_t *pud_k = pud_offset(pgd_k, addr);
     pmd_t *pmd_k = pmd_offset(pud_k, addr);
@@ -293,7 +429,7 @@ static void replace_sys_calls(unsigned long long *tbl) {
     // Still need the hikey defines if we want to be compatible
     // with QEMU
     //printk(KERN_ALERT "Address of last syscall %x, index %x\n", (unsigned long long) (tbl+(__NR_syscalls-1)), __NR_syscalls-1);
-    unsigned long addr = 0;
+    unsigned long long addr = 0;
     // sys_open_addr = (func_ptr)*(tbl + __NR_open ); // QEMU
     // sys_lstat_addr      = (func_ptr)*(tbl + __NR_lstat); // QEMU
     // sys_stat_addr       = (func_ptr)*(tbl + __NR_stat); // QEMU
@@ -309,18 +445,19 @@ static void replace_sys_calls(unsigned long long *tbl) {
     printk(KERN_ALERT "REPLACE: Address of original openat (%lx)\n", (unsigned long) sys_openat_addr);
 
     // Replace with our own
-    addr = (unsigned long) (tbl+(__NR_openat));
+    // addr = (unsigned long long) (tbl+(__NR_openat));
+    addr = (unsigned long long) (tbl);
 
     printk(KERN_ALERT "REPLACE: addresses to replace:");
-    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_openat));
-    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_close));
-    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_read));
-    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_write));
-    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_lseek));
-    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_exit_group));
-    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_fstat));
-    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_pread64));
-    printk(KERN_ALERT "\t%lx,\n", (unsigned long) (tbl + __NR_newfstatat));
+    printk(KERN_ALERT "\topenat:\t%lx,\n", (unsigned long) (tbl + __NR_openat));
+    printk(KERN_ALERT "\tclose:\t%lx,\n", (unsigned long) (tbl + __NR_close));
+    printk(KERN_ALERT "\tread:\t%lx,\n", (unsigned long) (tbl + __NR_read));
+    printk(KERN_ALERT "\twrite:\t%lx,\n", (unsigned long) (tbl + __NR_write));
+    printk(KERN_ALERT "\tlseek:\t%lx,\n", (unsigned long) (tbl + __NR_lseek));
+    printk(KERN_ALERT "\texit:\t%lx,\n", (unsigned long) (tbl + __NR_exit_group));
+    printk(KERN_ALERT "\tfstat:\t%lx,\n", (unsigned long) (tbl + __NR_fstat));
+    printk(KERN_ALERT "\tpread64:\t%lx,\n", (unsigned long) (tbl + __NR_pread64));
+    printk(KERN_ALERT "\tfstatat:\t%lx,\n", (unsigned long) (tbl + __NR_newfstatat));
 
     printk(KERN_ALERT "REPLACE: Setting addr (%lx) to rw\n", addr);
     // set_memory_rw does not work because apply_to_page_range (called by it) uses pgd_offset instead of pgd_offset_k
@@ -389,10 +526,8 @@ static int hello_init(void)
     ctx = tee_client_open_context(NULL, optee_match, NULL, &vers);
 
     // Find sys_call_table for this kernel
-// #ifndef HIKEY
     find_sys_call_table(acquire_kernel_version(buf), &sys_call_table);
     printk(KERN_ALERT "Table pointer: %p\nPointer truncated: %lx\n", sys_call_table, (unsigned long) sys_call_table);
-// #endif
     replace_sys_calls(sys_call_table);
 
     // Print message
