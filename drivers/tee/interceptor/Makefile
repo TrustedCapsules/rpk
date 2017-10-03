@@ -20,6 +20,7 @@ endif
 
 obj-m += interceptor.o
 interceptor-objs := \
+	tee_kernel_api.o \
 	tester.o \
 	util.o \
 

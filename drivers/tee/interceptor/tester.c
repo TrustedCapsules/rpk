@@ -20,6 +20,7 @@
 
 #include "../tee_private.h"
 #include "../optee/optee_breakdown.h"
+#include "tee_kernel_api.h"
 
 #include "helper.h"
 #include "util.h"
@@ -93,7 +94,7 @@ pgprot_t rw_clear_mask = __pgprot(PTE_RDONLY);
 // Our syscalls
 asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
     // TEE parameters
-    // uint32_t*       sess;
+    uint32_t*       sess;
 
     // Breakdown params
     // unsigned long long  cnt_a1, cnt_a2;
@@ -105,7 +106,7 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
     // char*               abs_file_name;
     // char*               path_ptr;
     int                 pwd_len = 0, abs_len = strlen(file_name) + 1, fd = -1, id = 0, found = 0;
-    // uint32_t            err_origin;
+    uint32_t            err_origin;
     // struct session*     curr_session = NULL;
     // struct process*     curr_proc = NULL;
     // struct fd_struct*   curr_fd_struct = NULL;
@@ -129,10 +130,10 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
     sys_openat_type     sys_openat_ptr = (sys_openat_type) sys_openat_addr;
     fd = (*sys_openat_ptr)(dirfd, file_name, flags, mode);
 
-    // int res = TEE_OpenSession( &ctx, sess, &uuid, TEEC_LOGIN_PUBLIC, 
-    //                             NULL, &err_origin );
-    // printk("Open session result: %d\n", res);
-    // printk("Session id: %d\n", *sess);
+    int res = TEE_OpenSession( &ctx, sess, &uuid, TEEC_LOGIN_PUBLIC, 
+                                NULL, &err_origin );
+    printk("Open session result: %d\n", res);
+    printk("Session id: %d\n", *sess);
 /*
     // Error check the open
     if (fd < 0) {
@@ -385,7 +386,7 @@ static void set_pte_rw(unsigned long long addr) {
     pmd_t *pmd_k = pmd_offset(pud_k, addr);
     pte_t *pte_k = pte_offset_kernel(pmd_k, addr);
 
-    printk(KERN_ALERT "addr = %lx, *pgd_k = %p, val_k = %lx\n", addr, pgd_k, pgd_k->pgd);
+    // printk(KERN_ALERT "addr = %lx, *pgd_k = %p, val_k = %lx\n", addr, pgd_k, pgd_k->pgd);
     // Make a copy
     pte_t pte = *pte_k;
 
@@ -442,27 +443,27 @@ static void replace_sys_calls(unsigned long long *tbl) {
     sys_fstat_addr      = (func_ptr)*(tbl + __NR_fstat);
     sys_pread64_addr    = (func_ptr)*(tbl + __NR_pread64);
     sys_newfstatat_addr = (func_ptr)*(tbl + __NR_newfstatat);
-    printk(KERN_ALERT "REPLACE: Address of original openat (%lx)\n", (unsigned long) sys_openat_addr);
+    // printk(KERN_ALERT "REPLACE: Address of original openat (%lx)\n", (unsigned long) sys_openat_addr);
 
     // Replace with our own
     // addr = (unsigned long long) (tbl+(__NR_openat));
     addr = (unsigned long long) (tbl);
 
-    printk(KERN_ALERT "REPLACE: addresses to replace:");
-    printk(KERN_ALERT "\topenat:\t%lx,\n", (unsigned long) (tbl + __NR_openat));
-    printk(KERN_ALERT "\tclose:\t%lx,\n", (unsigned long) (tbl + __NR_close));
-    printk(KERN_ALERT "\tread:\t%lx,\n", (unsigned long) (tbl + __NR_read));
-    printk(KERN_ALERT "\twrite:\t%lx,\n", (unsigned long) (tbl + __NR_write));
-    printk(KERN_ALERT "\tlseek:\t%lx,\n", (unsigned long) (tbl + __NR_lseek));
-    printk(KERN_ALERT "\texit:\t%lx,\n", (unsigned long) (tbl + __NR_exit_group));
-    printk(KERN_ALERT "\tfstat:\t%lx,\n", (unsigned long) (tbl + __NR_fstat));
-    printk(KERN_ALERT "\tpread64:\t%lx,\n", (unsigned long) (tbl + __NR_pread64));
-    printk(KERN_ALERT "\tfstatat:\t%lx,\n", (unsigned long) (tbl + __NR_newfstatat));
+    // printk(KERN_ALERT "REPLACE: addresses to replace:");
+    // printk(KERN_ALERT "\topenat:\t%lx,\n", (unsigned long) (tbl + __NR_openat));
+    // printk(KERN_ALERT "\tclose:\t%lx,\n", (unsigned long) (tbl + __NR_close));
+    // printk(KERN_ALERT "\tread:\t%lx,\n", (unsigned long) (tbl + __NR_read));
+    // printk(KERN_ALERT "\twrite:\t%lx,\n", (unsigned long) (tbl + __NR_write));
+    // printk(KERN_ALERT "\tlseek:\t%lx,\n", (unsigned long) (tbl + __NR_lseek));
+    // printk(KERN_ALERT "\texit:\t%lx,\n", (unsigned long) (tbl + __NR_exit_group));
+    // printk(KERN_ALERT "\tfstat:\t%lx,\n", (unsigned long) (tbl + __NR_fstat));
+    // printk(KERN_ALERT "\tpread64:\t%lx,\n", (unsigned long) (tbl + __NR_pread64));
+    // printk(KERN_ALERT "\tfstatat:\t%lx,\n", (unsigned long) (tbl + __NR_newfstatat));
 
-    printk(KERN_ALERT "REPLACE: Setting addr (%lx) to rw\n", addr);
+    // printk(KERN_ALERT "REPLACE: Setting addr (%lx) to rw\n", addr);
     // set_memory_rw does not work because apply_to_page_range (called by it) uses pgd_offset instead of pgd_offset_k
     set_pte_rw(addr);
-    printk(KERN_ALERT "REPLACE: Replacing with our function (%p)\n", (unsigned long*) openat);
+    // printk(KERN_ALERT "REPLACE: Replacing with our function (%p)\n", (unsigned long*) openat);
     *(tbl + __NR_openat)        = (func_ptr)openat;
     *(tbl + __NR_close)         = (func_ptr)close;
     *(tbl + __NR_read)          = (func_ptr)read;
@@ -472,41 +473,41 @@ static void replace_sys_calls(unsigned long long *tbl) {
     *(tbl + __NR_fstat)         = (func_ptr)fstat;
     *(tbl + __NR_newfstatat)    = (func_ptr)newfstatat;
     *(tbl + __NR_pread64)       = (func_ptr)pread64;
-    printk(KERN_ALERT "REPLACE: Setting addr (%lx) to ro\n", addr);
+    // printk(KERN_ALERT "REPLACE: Setting addr (%lx) to ro\n", addr);
     set_pte_ro(addr);
-    printk(KERN_ALERT "REPLACE: Finished, openat: %lx\n", (unsigned long) tbl[__NR_openat]);
+    // printk(KERN_ALERT "REPLACE: Finished, openat: %lx\n", (unsigned long) tbl[__NR_openat]);
 }
 
 static void restore_sys_calls(unsigned long long *tbl) {
     unsigned long addr = (unsigned long) (tbl+(__NR_openat));
 
-    printk(KERN_ALERT "RESTORE: Setting addr (%lx) to rw\n", addr);
+    // printk(KERN_ALERT "RESTORE: Setting addr (%lx) to rw\n", addr);
     set_pte_rw(addr);
-    printk(KERN_ALERT "RESTORE: Replacing with old function (%lx)\n", (unsigned long) sys_openat_addr);
+    // printk(KERN_ALERT "RESTORE: Replacing with old function (%lx)\n", (unsigned long) sys_openat_addr);
     // *(tbl + __NR_open)       = sys_open_addr;
     *(tbl + __NR_openat)        = sys_openat_addr;
-    printk(KERN_ALERT "\tDone... openat\n");
+    // printk(KERN_ALERT "\tDone... openat\n");
     *(tbl + __NR_close)         = sys_close_addr;
-    printk(KERN_ALERT "\tDone... close\n");
+    // printk(KERN_ALERT "\tDone... close\n");
     *(tbl + __NR_read)          = sys_read_addr;
-    printk(KERN_ALERT "\tDone... read\n");
+    // printk(KERN_ALERT "\tDone... read\n");
     *(tbl + __NR_write)         = sys_write_addr;
-    printk(KERN_ALERT "\tDone... write\n");
+    // printk(KERN_ALERT "\tDone... write\n");
     *(tbl + __NR_lseek)         = sys_lseek_addr;
-    printk(KERN_ALERT "\tDone... lseek\n");
+    // printk(KERN_ALERT "\tDone... lseek\n");
     *(tbl + __NR_fstat)         = sys_fstat_addr;
-    printk(KERN_ALERT "\tDone... fstat\n");
+    // printk(KERN_ALERT "\tDone... fstat\n");
     // *(tbl + __NR_stat)       = sys_stat_addr;
     // *(tbl + __NR_lstat)      = sys_lstat_addr;
     *(tbl + __NR_newfstatat)    = sys_newfstatat_addr;
-    printk(KERN_ALERT "\tDone... newfstatat\n");
+    // printk(KERN_ALERT "\tDone... newfstatat\n");
     *(tbl + __NR_pread64)       = sys_pread64_addr;
-    printk(KERN_ALERT "\tDone... pread64\n");
+    // printk(KERN_ALERT "\tDone... pread64\n");
     *(tbl + __NR_exit_group)    = sys_exit_group_addr;
-    printk(KERN_ALERT "\tDone... exit\n");
-    printk(KERN_ALERT "RESTORE: Setting addr (%lx) to ro\n", addr);
+    // printk(KERN_ALERT "\tDone... exit\n");
+    // printk(KERN_ALERT "RESTORE: Setting addr (%lx) to ro\n", addr);
     set_pte_ro(addr);
-    printk(KERN_ALERT "RESTORE: Finished, openat: %lx\n", (unsigned long) tbl[__NR_openat]);
+    // printk(KERN_ALERT "RESTORE: Finished, openat: %lx\n", (unsigned long) tbl[__NR_openat]);
 }
 
 static int hello_init(void)
@@ -527,7 +528,7 @@ static int hello_init(void)
 
     // Find sys_call_table for this kernel
     find_sys_call_table(acquire_kernel_version(buf), &sys_call_table);
-    printk(KERN_ALERT "Table pointer: %p\nPointer truncated: %lx\n", sys_call_table, (unsigned long) sys_call_table);
+    // printk(KERN_ALERT "Table pointer: %p\nPointer truncated: %lx\n", sys_call_table, (unsigned long) sys_call_table);
     replace_sys_calls(sys_call_table);
 
     // Print message
