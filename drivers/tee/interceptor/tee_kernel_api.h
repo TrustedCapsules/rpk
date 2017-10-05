@@ -4,6 +4,8 @@
 #include <linux/limits.h>
 #include <linux/tee_drv.h>
 
+#define TEE_LOGIN_PUBLIC    0x00000000
+
 typedef struct {
 	uint32_t timeLow;
 	uint16_t timeMid;
@@ -36,9 +38,8 @@ typedef struct {
  * Should operate the exact same as the client version (TEEC*), but can be
  * called from the kernel driver.
  */
-int TEE_OpenSession(tee_context *context, uint32_t session, const TEE_UUID
-	*destination, uint32_t connection_method, const void *connection_data,
-	tee_param *params, uint32_t *returnOrigin);
+int TEE_OpenSession(struct tee_context *context, uint32_t *session, const TEE_UUID
+	*destination, uint32_t connection_method, struct tee_param *params, uint32_t *returnOrigin);
 
 /*
  * TEE_CloseSession() - Close session for TEE.

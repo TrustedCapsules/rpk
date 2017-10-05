@@ -1,7 +1,8 @@
 #include <linux/string.h>
 #include "tee_kernel_api.h"
+//#include <linux/tee_drv.h>
 
-static void uuid_to_octets(uint8_t d[TEE_IOCTL_UUID_LEN], const TEE_UUID s) {
+static void uuid_to_octets(uint8_t d[TEE_IOCTL_UUID_LEN], const TEE_UUID *s) {
 	d[0] = s->timeLow >> 24; 
 	d[1] = s->timeLow >> 16; 
 	d[2] = s->timeLow >> 8; 
@@ -13,30 +14,30 @@ static void uuid_to_octets(uint8_t d[TEE_IOCTL_UUID_LEN], const TEE_UUID s) {
 	memcpy(d + 8, s->clockSeqAndNode, sizeof(s->clockSeqAndNode));
 }
 
-int TEE_OpenSession(tee_context *context, uint32_t *session, const TEE_UUID
-	*destination, uint32_t connection_method, tee_param *params, uint32_t
+int TEE_OpenSession(struct tee_context *context, uint32_t *session, const TEE_UUID
+	*destination, uint32_t connection_method, struct tee_param *params, uint32_t
 	*ret_origin) {
 
     // Message passing variables
-    struct tee_ioctl_open_session_arg* arg;
+    struct tee_ioctl_open_session_arg arg;
     int rc;
 
 	// Open session args
     memset(&arg, 0, sizeof(arg));
 
-    uuid_to_octets(arg->uuid, distination);
-    arg->clnt_login = connection_method;
+    uuid_to_octets(arg.uuid, destination);
+    arg.clnt_login = connection_method;
 
-    rc = tee_client_open_session(context, &args, NULL);
+    rc = tee_client_open_session(context, &arg, NULL);
 
     // Capsule open failed
-    if (arg->ret) {
+    if (arg.ret) {
         rc = -EINVAL;
     } else {
-    	*session = arg->session;
+    	*session = arg.session;
     }
 
-    *ret_origin = arg->ret_origin;
+    *ret_origin = arg.ret_origin;
 
     return rc;
 }

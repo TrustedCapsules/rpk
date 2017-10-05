@@ -17,6 +17,7 @@
 #include <linux/kallsyms.h>
 #include <linux/mm.h>
 #include <asm/pgtable.h>
+#include <capsule.h>
 
 #include "../tee_private.h"
 #include "../optee/optee_breakdown.h"
@@ -94,7 +95,8 @@ pgprot_t rw_clear_mask = __pgprot(PTE_RDONLY);
 // Our syscalls
 asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
     // TEE parameters
-    uint32_t*       sess;
+    uint32_t        sess;
+    TEE_UUID        uuid = CAPSULE_UUID;
 
     // Breakdown params
     // unsigned long long  cnt_a1, cnt_a2;
@@ -130,10 +132,10 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
     sys_openat_type     sys_openat_ptr = (sys_openat_type) sys_openat_addr;
     fd = (*sys_openat_ptr)(dirfd, file_name, flags, mode);
 
-    int res = TEE_OpenSession( &ctx, sess, &uuid, TEEC_LOGIN_PUBLIC, 
+    int res = TEE_OpenSession( ctx, &sess, &uuid, TEE_LOGIN_PUBLIC, 
                                 NULL, &err_origin );
     printk("Open session result: %d\n", res);
-    printk("Session id: %d\n", *sess);
+    printk("Session id: %d\n", sess);
 /*
     // Error check the open
     if (fd < 0) {
