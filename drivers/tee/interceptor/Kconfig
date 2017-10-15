@@ -1,0 +1,6 @@
+# Trusted Capsules Interceptor Configuration
+config INTERCEPTOR
+    tristate "Trusted Capsules Interceptor"
+    depends on OPTEE
+    help
+        This enables the interceptor for trusted capsules.
