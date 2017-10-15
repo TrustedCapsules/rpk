@@ -196,6 +196,8 @@ int is_capsule( const char* file_name, int* id ) {
 	oldfs = get_fs();
 	set_fs( KERNEL_DS );
 
+    // TODO: Why do we need to open it again when we already open it in the intercepted
+    //       syscall?
 	fd = (*sys_openat_ptr)( AT_FDCWD, file_name, O_RDONLY, 0 );
 	if( fd >= 0 ) {
 		if( is_reg_file( fd ) ) {

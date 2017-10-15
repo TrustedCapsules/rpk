@@ -131,11 +131,16 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
 
     sys_openat_type     sys_openat_ptr = (sys_openat_type) sys_openat_addr;
     fd = (*sys_openat_ptr)(dirfd, file_name, flags, mode);
+    // For testing we need to only run open session on a test file or it hangs.
+    if ( strstr(file_name, "bio.capsule") != NULL) {
+        printk("Calling open session\n");
 
-    int res = TEE_OpenSession( ctx, &sess, &uuid, TEE_LOGIN_PUBLIC, 
-                                NULL, &err_origin );
-    printk("Open session result: %d\n", res);
-    printk("Session id: %d\n", sess);
+        int res = TEE_OpenSession( ctx, &sess, &uuid, TEE_LOGIN_PUBLIC, 
+                                    NULL, &err_origin );
+        printk("Open session result: %d\n", res);
+        printk("Session id: %d\n", sess);
+        printk( "Interceptor open(): %s(%d) %d/%d\n", current->comm, fd, current->tgid, fd );
+    }
 /*
     // Error check the open
     if (fd < 0) {
@@ -462,10 +467,10 @@ static void replace_sys_calls(unsigned long long *tbl) {
     // printk(KERN_ALERT "\tpread64:\t%lx,\n", (unsigned long) (tbl + __NR_pread64));
     // printk(KERN_ALERT "\tfstatat:\t%lx,\n", (unsigned long) (tbl + __NR_newfstatat));
 
-    // printk(KERN_ALERT "REPLACE: Setting addr (%lx) to rw\n", addr);
+    printk(KERN_ALERT "REPLACE: Setting addr (%lx) to rw\n", addr);
     // set_memory_rw does not work because apply_to_page_range (called by it) uses pgd_offset instead of pgd_offset_k
     set_pte_rw(addr);
-    // printk(KERN_ALERT "REPLACE: Replacing with our function (%p)\n", (unsigned long*) openat);
+    printk(KERN_ALERT "REPLACE: Replacing with our function (%p)\n", (unsigned long*) openat);
     *(tbl + __NR_openat)        = (func_ptr)openat;
     *(tbl + __NR_close)         = (func_ptr)close;
     *(tbl + __NR_read)          = (func_ptr)read;
@@ -483,9 +488,9 @@ static void replace_sys_calls(unsigned long long *tbl) {
 static void restore_sys_calls(unsigned long long *tbl) {
     unsigned long addr = (unsigned long) (tbl+(__NR_openat));
 
-    // printk(KERN_ALERT "RESTORE: Setting addr (%lx) to rw\n", addr);
+    printk(KERN_ALERT "RESTORE: Setting addr (%lx) to rw\n", addr);
     set_pte_rw(addr);
-    // printk(KERN_ALERT "RESTORE: Replacing with old function (%lx)\n", (unsigned long) sys_openat_addr);
+    printk(KERN_ALERT "RESTORE: Replacing with old function (%lx)\n", (unsigned long) sys_openat_addr);
     // *(tbl + __NR_open)       = sys_open_addr;
     *(tbl + __NR_openat)        = sys_openat_addr;
     // printk(KERN_ALERT "\tDone... openat\n");
@@ -507,9 +512,9 @@ static void restore_sys_calls(unsigned long long *tbl) {
     // printk(KERN_ALERT "\tDone... pread64\n");
     *(tbl + __NR_exit_group)    = sys_exit_group_addr;
     // printk(KERN_ALERT "\tDone... exit\n");
-    // printk(KERN_ALERT "RESTORE: Setting addr (%lx) to ro\n", addr);
+    printk(KERN_ALERT "RESTORE: Setting addr (%lx) to ro\n", addr);
     set_pte_ro(addr);
-    // printk(KERN_ALERT "RESTORE: Finished, openat: %lx\n", (unsigned long) tbl[__NR_openat]);
+    printk(KERN_ALERT "RESTORE: Finished, openat: %lx\n", (unsigned long) tbl[__NR_openat]);
 }
 
 static int hello_init(void)
@@ -539,6 +544,7 @@ static int hello_init(void)
 }
 static void hello_exit(void)
 {
+    printk("Closing context\n");
     tee_client_close_context(ctx);
     restore_sys_calls(sys_call_table);
     printk(KERN_ALERT "Goodbye, cruel world\n");

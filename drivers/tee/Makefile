@@ -4,4 +4,4 @@ tee-objs += tee_shm.o
 tee-objs += tee_shm_pool.o
 obj-$(CONFIG_OPTEE) += optee/
 # Change to be CONFIG_INTERCEPTOR
-obj-$(CONFIG_OPTEE) += interceptor/
+obj-$(CONFIG_INTERCEPTOR) += interceptor/
