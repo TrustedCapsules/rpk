@@ -68,7 +68,7 @@ DEFINE_SPINLOCK(proc_lock);
  */
 DEFINE_HASHTABLE(proc_table, 10);
 
-/* Session List: abs filenamkes -> TEE sessoins
+/* Session List: abs filenames -> TEE sessions
  *
  * This keeps track of a set of TEE Sessions for each trusted
  * capsule. Theoretically, one new instance of TEE Session
