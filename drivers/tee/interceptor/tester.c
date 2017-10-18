@@ -258,33 +258,44 @@ close_out:
 
 
 asmlinkage int lstat(const char *pathname, struct stat *buf) {
-    sys_lstat_type  sys_lstat_ptr = (sys_lstat_type) sys_lstat_addr;
-    int ret = (*sys_lstat_ptr)(pathname, buf);
+	int id;
+	sys_lstat_type sys_lstat_ptr = (sys_lstat_type) sys_lstat_addr;
+	int ret = (*sys_lstat_ptr)( pathname, buf );
 
-    // TODO: perform capsule logic
-
-    // printk("Interceptor lstat(): %s(%s) %d\n", current->comm, pathname, current->tgid);
+	//printk( "Interceptor lstat():\n" );
+  	if( strncmp( _tee_supp_app_name, current->comm, strlen(_tee_supp_app_name) ) ) {
+		if( S_ISREG( buf->st_mode ) ) {
+			printk( "Interceptor stat(): \n" );
+  			if( is_capsule( pathname, &id ) ){
+				printk( "Interceptor stat(): trusted capsule 0x%08x\n", id );
+			}
+		}
+	}
     return ret;
 }
 
 asmlinkage int stat(const char *pathname, struct stat *buf) {
-    sys_stat_type   sys_stat_ptr = (sys_stat_type) sys_stat_addr;
-    int ret = (*sys_stat_ptr)(pathname, buf);
+	int id;
+	sys_stat_type sys_stat_ptr = (sys_stat_type) sys_stat_addr;
+	int ret = (*sys_stat_ptr)( pathname, buf );
 
-    // TODO: perform capsule logic
-
-    // printk("Interceptor stat(): %s(%s) %d\n", current->comm, pathname, current->tgid);
+	//printk( "Interceptor stat():\n" );
+  	if( strncmp( _tee_supp_app_name, current->comm, strlen(_tee_supp_app_name) ) ) {
+		if( S_ISREG( buf->st_mode ) ) {
+			printk( "Interceptor stat():\n" );
+  			if( is_capsule( pathname, &id ) ){
+				printk( "Interceptor stat(): trusted capsule 0x%08x\n", id );
+			}
+		}
+	}
     return ret;
 }
 
 asmlinkage int newfstatat(int dirfd, const char *pathname, struct stat *buf,
                           int flags) {
-    sys_newfstatat_type sys_newfstatat_ptr = (sys_newfstatat_type) sys_newfstatat_addr;
-
-    // TODO: perform capsule logic
-
-    // printk("Interceptor newfstatat(): %s(%s) %d\n", current->comm, pathname, current->tgid);
-    return (*sys_newfstatat_ptr)(dirfd, pathname, buf, flags);
+	sys_newfstatat_type sys_newfstatat_ptr = (sys_newfstatat_type) sys_newfstatat_addr;
+	//printk( "Intercepted this newfstatat call\n" );
+	return (*sys_newfstatat_ptr)(dirfd, pathname, buf, flags);
 }
 
 asmlinkage int fstat(int fd, struct stat *buf) {
