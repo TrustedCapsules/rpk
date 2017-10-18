@@ -1,6 +1,8 @@
 #include <linux/string.h>
 #include "tee_kernel_api.h"
-//#include <linux/tee_drv.h>
+#include <linux/tee_drv.h>
+#include <unistd.h>
+
 
 static void uuid_to_octets(uint8_t d[TEE_IOCTL_UUID_LEN], const TEE_UUID *s) {
 	d[0] = s->timeLow >> 24; 
@@ -63,6 +65,37 @@ int TEE_OpenSession(struct tee_context *context, uint32_t *session, const TEE_UU
 }
 */
 
+int TEE_AllocateSharedMemory(struct tee_context *context, TEE_SharedMemory *sharedMem) {
+  struct tee_shm *shm;
+	int fd;
+	int id;
+	uint32_t flags;
+	size_t alloc_size;
+
+  shm = tee_shm_alloc(context, sharedMem->size, TEE_SHM_MAPPED | TEE_SHM_DMA_BUF);
+  fd = tee_shm_get_fd(shm);
+
+	if (fd < 0) {
+		return 0xFFFF000C;
+	}
+
+  id = shm->id;
+  flags = shm->flags;
+  alloc_size = shm->size;
+
+  sharedMem->buffer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  close(fd);
+
+	if (sharedMem->buffer == (void *)(-1)) {
+		sharedMem->id = -1;
+		return 0xFFFF000C;
+	}
+	sharedMem->shadow_buffer = NULL;
+	sharedMem->alloced_size = s;
+	sharedMem->registered_fd = -1;
+  return 0;
+}
+
 // EASIEST
 /* int TEE_CloseSession(tee_context *ctx, uint32_t session){
 	// TODO: James start here
@@ -70,6 +103,10 @@ int TEE_OpenSession(struct tee_context *context, uint32_t *session, const TEE_UU
 	// wrapper
 }
 */
+
+int TEE_CloseSession(struct tee_context *ctx, uint32_t session) {
+  return tee_client_close_session(ctx, session);
+}
 
 // HARDEST
 	// 1. Setup variables, must create an populate the tee_ioctl_invoke_arg
