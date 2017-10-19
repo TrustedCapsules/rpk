@@ -1,7 +1,8 @@
 #include <linux/string.h>
 #include "tee_kernel_api.h"
+#include "../tee_private.h"
 #include <linux/tee_drv.h>
-#include <unistd.h>
+
 
 
 static void uuid_to_octets(uint8_t d[TEE_IOCTL_UUID_LEN], const TEE_UUID *s) {
