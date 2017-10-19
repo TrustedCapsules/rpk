@@ -18,7 +18,6 @@
 
 // TODO: double check these includes
 #include <capsule.h>
-#include <linux/tee_kernel_api.h>
 #include "structures.h"
 #include "helper.h"
 

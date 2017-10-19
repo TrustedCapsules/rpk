@@ -5,6 +5,28 @@
 #include <linux/tee_drv.h>
 
 #define TEE_LOGIN_PUBLIC    0x00000000
+#define TEE_CONFIG_PAYLOAD_REF_COUNT 4
+
+#define TEE_NONE                   0x00000000
+#define TEE_VALUE_INPUT            0x00000001
+#define TEE_VALUE_OUTPUT           0x00000002
+#define TEE_VALUE_INOUT            0x00000003
+#define TEE_MEMREF_TEMP_INPUT      0x00000005
+#define TEE_MEMREF_TEMP_OUTPUT     0x00000006
+#define TEE_MEMREF_TEMP_INOUT      0x00000007
+
+#define TEE_MEM_INPUT   0x00000001
+#define TEE_MEM_OUTPUT  0x00000002
+
+#define TEE_PARAM_TYPE_GET(p, i) (((p) >> (i * 4)) & 0xF)
+
+#define TEE_SUCCESS                0x00000000
+#define TEE_ERROR_BAD_PARAMETERS   0xFFFF0006
+
+#define TEE_ORIGIN_API          0x00000001
+#define TEE_ORIGIN_COMMS        0x00000002
+#define TEE_ORIGIN_TEE          0x00000003
+#define TEE_ORIGIN_TRUSTED_APP  0x00000004
 
 typedef struct {
 	uint32_t timeLow;
@@ -16,13 +38,24 @@ typedef struct {
 typedef struct {
 	void *buffer;
 	size_t size;
-	uint32_t flags;
-	/* Implementation defined */
-	int id;
-	size_t alloced_size;
-	void *shadow_buffer;
-	int registered_fd;
-} TEE_SharedMemory;
+} TEE_TempMemoryReference;
+
+typedef struct {
+	uint32_t a;
+	uint32_t b;
+} TEE_Value;
+
+typedef union {
+	TEE_TempMemoryReference tmpref;
+	TEE_Value value;
+} TEE_Parameter;
+
+typedef struct {
+	uint32_t started;
+	uint32_t paramTypes;
+	TEE_Parameter params[TEE_CONFIG_PAYLOAD_REF_COUNT];
+	uint32_t session;
+} TEE_Operation;
 
 /*
  * TEE_AllocateSharedMemory() - Allocated shared memory for TEE.
@@ -63,6 +96,6 @@ int TEE_CloseSession(struct tee_context *ctx, uint32_t session);
  * Should operate the exact same as the client version (TEEC*), but can be
  * called from the kernel driver.
  */
-// int TEE_InvokeCommand(uint32_t session, uint32_t commandID, tee_param *params,
-// 	uint32_t *returnOrigin);
+int TEE_InvokeCommand(struct tee_context *ctx, uint32_t session, uint32_t
+	commandID, TEE_Operation *operation, uint32_t *returnOrigin);
 #endif

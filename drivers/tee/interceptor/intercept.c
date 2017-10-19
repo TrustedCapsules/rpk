@@ -13,7 +13,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/limits.h>
-#include <linux/tee_kernel_api.h>
+// #include <linux/tee_kernel_api.h>
 #include <linux/spinlock.h>
 #include <linux/mutex.h>
 

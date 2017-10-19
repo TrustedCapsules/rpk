@@ -23,6 +23,7 @@ interceptor-objs := \
 	tee_kernel_api.o \
 	tester.o \
 	util.o \
+	helper.o \
 
 $(info $$PWD is [${PWD}])
 #$(info $$CC is [${CC}])

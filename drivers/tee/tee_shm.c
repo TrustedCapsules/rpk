@@ -320,6 +320,7 @@ int tee_shm_get_fd(struct tee_shm *shm)
 		get_dma_buf(shm->dmabuf);
 	return fd;
 }
+EXPORT_SYMBOL_GPL(tee_shm_get_fd);
 
 /**
  * tee_shm_free() - Free shared memory

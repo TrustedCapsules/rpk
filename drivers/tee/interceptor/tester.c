@@ -103,7 +103,7 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
     // bool                record = false;
 
     // Other params
-    // sys_close_type      sys_close_ptr = (sys_close_type) sys_close_add;
+    // sys_close_type      sys_close_ptr = (sys_close_type) sys_close_addr;
     // char*               pwd_path = kmalloc(PATH_MAX - strlen(file_name), GFP_KERNEL);
     // char*               abs_file_name;
     // char*               path_ptr;
@@ -114,7 +114,7 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
     // struct fd_struct*   curr_fd_struct = NULL;
     // bool                truncate = (flags & O_TRUNC) &&
     //                                (flags & O_RDWR || flags & O_WRONLY);
-    // bool                iscap = is_capsule(file_name, &id);
+    bool                iscap = is_capsule(file_name, &id);
 
     // TODO: add other variables and check for truncate flag
     //
@@ -132,7 +132,7 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
     sys_openat_type     sys_openat_ptr = (sys_openat_type) sys_openat_addr;
     fd = (*sys_openat_ptr)(dirfd, file_name, flags, mode);
     // For testing we need to only run open session on a test file or it hangs.
-    if ( strstr(file_name, "bio.capsule") != NULL) {
+    if (iscap) {
         printk("Calling open session\n");
 
         int res = TEE_OpenSession( ctx, &sess, &uuid, TEE_LOGIN_PUBLIC, 
@@ -140,6 +140,9 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
         printk("Open session result: %d\n", res);
         printk("Session id: %d\n", sess);
         printk( "Interceptor open(): %s(%d) %d/%d\n", current->comm, fd, current->tgid, fd );
+
+        res = TEE_CloseSession(ctx, sess);
+        printk("Close session result: %d\n", res);
     }
 /*
     // Error check the open
@@ -258,36 +261,36 @@ close_out:
 
 
 asmlinkage int lstat(const char *pathname, struct stat *buf) {
-	int id;
+	// int id;
 	sys_lstat_type sys_lstat_ptr = (sys_lstat_type) sys_lstat_addr;
 	int ret = (*sys_lstat_ptr)( pathname, buf );
 
 	//printk( "Interceptor lstat():\n" );
-  	if( strncmp( _tee_supp_app_name, current->comm, strlen(_tee_supp_app_name) ) ) {
-		if( S_ISREG( buf->st_mode ) ) {
-			printk( "Interceptor stat(): \n" );
-  			if( is_capsule( pathname, &id ) ){
-				printk( "Interceptor stat(): trusted capsule 0x%08x\n", id );
-			}
-		}
-	}
+ //  	if( strncmp( _tee_supp_app_name, current->comm, strlen(_tee_supp_app_name) ) ) {
+	// 	if( S_ISREG( buf->st_mode ) ) {
+	// 		printk( "Interceptor stat(): \n" );
+ //  			if( is_capsule( pathname, &id ) ){
+	// 			printk( "Interceptor stat(): trusted capsule 0x%08x\n", id );
+	// 		}
+	// 	}
+	// }
     return ret;
 }
 
 asmlinkage int stat(const char *pathname, struct stat *buf) {
-	int id;
+	// int id;
 	sys_stat_type sys_stat_ptr = (sys_stat_type) sys_stat_addr;
 	int ret = (*sys_stat_ptr)( pathname, buf );
 
 	//printk( "Interceptor stat():\n" );
-  	if( strncmp( _tee_supp_app_name, current->comm, strlen(_tee_supp_app_name) ) ) {
-		if( S_ISREG( buf->st_mode ) ) {
-			printk( "Interceptor stat():\n" );
-  			if( is_capsule( pathname, &id ) ){
-				printk( "Interceptor stat(): trusted capsule 0x%08x\n", id );
-			}
-		}
-	}
+ //  	if( strncmp( _tee_supp_app_name, current->comm, strlen(_tee_supp_app_name) ) ) {
+	// 	if( S_ISREG( buf->st_mode ) ) {
+	// 		printk( "Interceptor stat():\n" );
+ //  			if( is_capsule( pathname, &id ) ){
+	// 			printk( "Interceptor stat(): trusted capsule 0x%08x\n", id );
+	// 		}
+	// 	}
+	// }
     return ret;
 }
 
