@@ -30,7 +30,15 @@ typedef struct {
  * Should operate the exact same as the client version (TEEC*), but can be
  * called from the kernel driver.
  */
-// int TEE_AllocateSharedMemory(tee_context *context, TEE_SharedMemory *sharedMem);
+int TEE_AllocateSharedMemory(struct tee_context *context, struct tee_shm *shm, size_t size);
+
+/*
+ * TEE_ReleaseSharedMemory() - Frees shared memory for TEE.
+ *
+ * Should operate the exact same as the client version (TEEC*), but can be
+ * called from the kernel driver.
+ */
+void TEE_ReleaseSharedMemory(struct tee_shm *shm);
 
 /*
  * TEE_OpenSession() - Open Session for TEE.
@@ -47,7 +55,7 @@ int TEE_OpenSession(struct tee_context *context, uint32_t *session, const TEE_UU
  * Should operate the exact same as the client version (TEEC*), but can be
  * called from the kernel driver.
  */
-// int TEE_CloseSession(uint32_t session);
+int TEE_CloseSession(struct tee_context *ctx, uint32_t session);
 
 /*
  * TEE_InvokeCommand() - Invoke command for TEE.
