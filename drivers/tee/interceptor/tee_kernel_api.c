@@ -65,36 +65,41 @@ int TEE_OpenSession(struct tee_context *context, uint32_t *session, const TEE_UU
 }
 */
 
-int TEE_AllocateSharedMemory(struct tee_context *context, TEE_SharedMemory *sharedMem) {
-  struct tee_shm *shm;
-	int fd;
-	int id;
-	uint32_t flags;
-	size_t alloc_size;
+int TEE_AllocateSharedMemory(struct tee_context *context, struct tee_shm *shm, size_t size) {
+ //  struct tee_shm *shm;
+	// int fd;
+	// int id;
+	// uint32_t flags;
+	// size_t alloc_size;
 
-  shm = tee_shm_alloc(context, sharedMem->size, TEE_SHM_MAPPED | TEE_SHM_DMA_BUF);
-  fd = tee_shm_get_fd(shm);
+  shm = tee_shm_alloc(context, size, TEE_SHM_MAPPED | TEE_SHM_DMA_BUF);
+ //  fd = tee_shm_get_fd(shm);
 
-	if (fd < 0) {
-		return 0xFFFF000C;
-	}
+	// if (fd < 0) {
+	// 	return 0xFFFF000C;
+	// }
 
-  id = shm->id;
-  flags = shm->flags;
-  alloc_size = shm->size;
+ //  id = shm->id;
+ //  flags = shm->flags;
+ //  alloc_size = shm->size;
 
-  sharedMem->buffer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  close(fd);
+ //  sharedMem->buffer = mmap(NULL, sharedMem->size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+ //  close(fd);
 
-	if (sharedMem->buffer == (void *)(-1)) {
-		sharedMem->id = -1;
-		return 0xFFFF000C;
-	}
-	sharedMem->shadow_buffer = NULL;
-	sharedMem->alloced_size = s;
-	sharedMem->registered_fd = -1;
+	// if (sharedMem->buffer == (void *)(-1)) {
+	// 	sharedMem->id = -1;
+	// 	return 0xFFFF000C;
+	// }
+	// sharedMem->shadow_buffer = NULL;
+	// sharedMem->alloced_size = sharedMem->size;
+	// sharedMem->registered_fd = -1;
   return 0;
 }
+
+void TEE_ReleaseSharedMemory(struct tee_shm *shm) {
+	tee_shm_free(shm);
+}
+
 
 // EASIEST
 /* int TEE_CloseSession(tee_context *ctx, uint32_t session){
