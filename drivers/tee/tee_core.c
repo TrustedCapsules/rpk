@@ -996,12 +996,9 @@ int tee_client_invoke_func(struct tee_context *ctx,
 EXPORT_SYMBOL_GPL(tee_client_invoke_func);
 
 static void enable_user_counters(void* data) {
-//#ifdef HIKEY
     uint32_t cntkctl;
     unsigned long long ts;
 
-    //asm ( "msr PMUSERENR_EL0, %0\n\t" : : "r"(1) );
-    //asm ( "msr PMINTENCLR_EL1, %0 \n\t" : : "r"(0x8000000f) );
     pr_info( "Enabled Performance counters\n" );
 
     asm volatile( "mrs %0, cntkctl_el1" : "=r" (cntkctl) );
@@ -1009,19 +1006,6 @@ static void enable_user_counters(void* data) {
     asm ( "msr cntkctl_el1, %0 \n\t" : : "r"(cntkctl) );
     asm ( "mrs %0, cntpct_el0" : "=r" (ts) );
     pr_info( "Enabled Physical Counters: %llu\n", ts );
-//#else
-    // enable user-mode access to the performance counter
-//    asm ( "MCR p15, 0, %0, c9, c14, 0\n\t" :: "r"(1) );
-
-    // disable counter overflow interrupts (just-in-case)
-//    asm ( "MCR p15, 0, %0, c9, c14, 2\n\t" :: "r"(0x8000000f) );
-
-//    pr_info("Enabled Performance Counters\n");
-
-    // enable user-mode access to physical counter
-//    asm ( "MCR p15, 0, %0, c14, c1, 0\n\t" :: "r"(1) );
-//    pr_info( "Enabled Physical Counters\n" );
-//#endif
 }
 
 static int __init tee_init(void)

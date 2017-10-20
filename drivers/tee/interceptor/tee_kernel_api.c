@@ -2,6 +2,7 @@
 #include "tee_kernel_api.h"
 #include "../tee_private.h"
 #include <linux/tee_drv.h>
+#include <linux/err.h>
 
 static uint32_t tee_pre_process_tempref(struct tee_context *ctx, uint32_t param_type,
 	TEE_TempMemoryReference *tmpref, struct tee_param *param, struct tee_shm *shm) 
@@ -33,6 +34,9 @@ static uint32_t tee_pre_process_tempref(struct tee_context *ctx, uint32_t param_
 		return res;
 	}
 
+
+	printk("Attempting to memcpy %s at %p to %p\n", tmpref->buffer,
+		tmpref->buffer, shm->kaddr);
 	memcpy(shm->kaddr, tmpref->buffer, tmpref->size);
 	param->u.memref.size = tmpref->size;
 	param->u.memref.shm = shm;
@@ -221,7 +225,16 @@ int TEE_AllocateSharedMemory(struct tee_context *context, struct tee_shm *shm, s
 	// uint32_t flags;
 	// size_t alloc_size;
 
-  shm = tee_shm_alloc(context, size, TEE_SHM_MAPPED | TEE_SHM_DMA_BUF);
+  shm = tee_shm_alloc(context, size, TEE_SHM_MAPPED);
+
+  if (!IS_ERR(shm)) {
+  	printk("Error with shm\n");
+  	char* arg = tee_shm_get_va(shm, 0);
+
+  	if (!IS_ERR(arg)) {
+  		printk("aeoighsewf;ijq;iej\n");
+  	}
+  }
   tee_shm_get_fd(shm); // needed to increase reference count.
 
 	// if (fd < 0) {
@@ -343,4 +356,15 @@ out:
 		*returnOrigin = eorig;
 	// return
 	return rc;
+}
+
+unsigned long long read_cntpct(void) {
+	unsigned long long ts;
+
+#ifdef HIKEY
+	asm volatile( "mrs %0, cntpct_el0" : "=r" (ts) );
+#else
+	asm volatile( "mrcc p15, 0, %Q0, %R0, c14" : "=r" (ts) );
+#endif
+	return ts;
 }

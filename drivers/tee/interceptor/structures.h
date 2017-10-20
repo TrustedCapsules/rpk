@@ -4,7 +4,7 @@
 struct session {
 	struct hlist_node       hash_list;
 	char                    *abs_name;
-	uint32_t                *sess;
+	uint32_t                sess;
 	int                     id;
 	int          	        refcnt;
 };

@@ -24,10 +24,14 @@
 #include "tee_kernel_api.h"
 
 #include "helper.h"
+#include "structures.h"
 #include "util.h"
 
 /* TEE TrustZone context */
 struct tee_context *ctx;
+
+/* TEE supplicant process name */
+static char *_tee_supp_app_name = "tee-supplicant";
 
 /* Address of system call table */
 unsigned long long *sys_call_table = NULL;
@@ -97,150 +101,291 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
     // TEE parameters
     uint32_t        sess;
     TEE_UUID        uuid = CAPSULE_UUID;
+    TEE_Operation	op;
+    uint32_t		res;
 
     // Breakdown params
-    // unsigned long long  cnt_a1, cnt_a2;
-    // bool                record = false;
+    unsigned long long  cnt_a1, cnt_a2;
+    bool                record = false;
 
     // Other params
-    // sys_close_type      sys_close_ptr = (sys_close_type) sys_close_addr;
-    // char*               pwd_path = kmalloc(PATH_MAX - strlen(file_name), GFP_KERNEL);
-    // char*               abs_file_name;
-    // char*               path_ptr;
+    sys_openat_type     sys_openat_ptr = (sys_openat_type) sys_openat_addr;
+    sys_close_type      sys_close_ptr = (sys_close_type) sys_close_addr;
+    char*               pwd_path = kmalloc(PATH_MAX - strlen(file_name), GFP_KERNEL);
+    char*               abs_file_name;
+    char*               path_ptr;
     int                 pwd_len = 0, abs_len = strlen(file_name) + 1, fd = -1, id = 0, found = 0;
     uint32_t            err_origin;
-    // struct session*     curr_session = NULL;
-    // struct process*     curr_proc = NULL;
-    // struct fd_struct*   curr_fd_struct = NULL;
-    // bool                truncate = (flags & O_TRUNC) &&
-    //                                (flags & O_RDWR || flags & O_WRONLY);
-    bool                iscap = is_capsule(file_name, &id);
+    struct session*     curr_sess = NULL;
+    struct process*     curr_proc = NULL;
+    struct fd_struct*   curr_fd_struct = NULL;
+    bool                truncate = (flags & O_TRUNC) &&
+                                   (flags & O_RDWR || flags & O_WRONLY);
+    bool                is_cap = is_capsule(file_name, &id);
 
-    // TODO: add other variables and check for truncate flag
-    //
     // Check to see if there is a truncate flag, this messes with the TC header, so we
     // need to override it.
-    // if (is_cap && truncate) {
-    //     flags = flags & (~O_TRUNC);
-    // }
+    if (is_cap && truncate) {
+        flags = flags & (~O_TRUNC);
+    }
 
-    // TODO: testing remove when building call
-    // if (iscap) {
-        curr_ts = 0;
-    // }
-
-    sys_openat_type     sys_openat_ptr = (sys_openat_type) sys_openat_addr;
     fd = (*sys_openat_ptr)(dirfd, file_name, flags, mode);
-    // For testing we need to only run open session on a test file or it hangs.
-    if (iscap) {
-        printk("Calling open session\n");
+    cnt_a1 = read_cntpct();
 
-        int res = TEE_OpenSession( ctx, &sess, &uuid, TEE_LOGIN_PUBLIC, 
-                                    NULL, &err_origin );
-        printk("Open session result: %d\n", res);
-        printk("Session id: %d\n", sess);
-        printk( "Interceptor open(): %s(%d) %d/%d\n", current->comm, fd, current->tgid, fd );
-
-        res = TEE_CloseSession(ctx, sess);
-        printk("Close session result: %d\n", res);
-    }
-/*
-    // Error check the open
+    // TODO: why?
     if (fd < 0) {
-        fd = -1;
+    	fd = -1;
     }
 
-    if (fd >= 0 && strncmp(_tee_supp_app_name, current->comm,
-                           strlen(_tee_supp_app_name)) && is_cap) {
-        // Breakdown code (set the operation to open - 0) and set record to true
-        curr_ts = 0;
-        record = true;
+    // For testing we need to only run open session on a test file or it hangs.
+    // if (iscap) {
+    //     printk("Calling open session\n");
 
-        if (file_name[0] != '/') {
-            path_ptr = get_pwd_path(pwd_path, PATH_MAX, &pwd_len);
-            if (pwd_len < 0) {
-                printk("Interceptor open(): current->comm %s "
-                        " pwd path not found\n", current->comm);
-                goto open_out;
-            }
-            abs_len += pwd_len + 1;
-        }
+    //     int res = TEE_OpenSession( ctx, &sess, &uuid, TEE_LOGIN_PUBLIC, 
+    //                                 NULL, &err_origin );
+    //     printk("Open session result: %d\n", res);
+    //     printk("Session id: %d\n", sess);
+    //     printk( "Interceptor open(): %s(%d) %d/%d\n", current->comm, fd, current->tgid, fd );
 
-        abs_file_name = kmalloc(abs_len, GFP_KERNEL);
-        if (pwd_len > 0) {
-            memcpy(abs_file_name, path_ptr, pwd_len);
-            abs_file_name[pwd_len] = '/';
-            pwd_len++;
-        }
+    //     res = TEE_CloseSession(ctx, sess);
+    //     printk("Close session result: %d\n", res);
+    // }
 
-        strcpy(abs_file_name + pwd_len, file_name);
-
-        // Lock the session table 
-        mutex_lock(&sess_lock);
-
-        // Look through the table to see if a session already exists for
-        // this capsule
-        hash_for_each_possible(sess_table, curr_sess, hash_list, id) {
-            if (curr_sess->id == id) {
-                kfree(abs_file_name);
-                abs_file_name = curr_sess->abs_name;
-                found = 1;
-                break;
-            }
-        }
-
-        // No matching session found, create one
-        if (found != 1) {
-            // Call open session
-
-            cnt_a2 = read_cntpct();
-            driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 +
-                                            cnt_a2 - cnt_b2;
-            cnt_a1 = read_cntpct();
-            cnt_b1 = 0;
-            cnt_b2 = 0;
-
-            if (rc) {
-                (*sys_close_ptr)(fd); // Close file
-                fd = -1;
-                printk("Interceptor open(): current->comm %s "
-                       "tee_client_open_session failed rc %x\n",
-                       current->comm, rc);
-                mutex_unlock(&sess_lock);
-                goto open_out;
-            }
-
-        } else { // Found session
-            sess = curr_sess->sess;
-        }
-
-        // Make capsule open args
-        memset(&arg, 0, sizeof(arg));
-        arg.func = CAPSULE_OPEN;
-        arg.session = sess;
-        arg.num_params = 2;
-
-        params = kmalloc_array(arg->num_params, sizeof(struct tee_param),
-                        GFP_KERNEL);
-        if (!params) {
-            //TEEC_ERROR_OUT_OF_MEMORY
-        }
-
-        // Declare shared memory for file name
-        file_shm = tee_shm_alloc(&ctx, strlen(abs_file_name), TEE_SHM_MAPPED);
-        params[0].attr = TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INPUT;
-        params[0].u.memref.shm = shm;
-        params[0].u.memref.size = strlen(abs_file_name);
-
-        params[1].attr = TEE_IOCLT_PARAM_ATTR_TYPE_VALUE_INPUT;
-        params[1].u.value.a = current->tgid;
-        params[1].u.value.b = fd;
-    }
-    */
     // TODO: Perform capsule logic
+    if (fd >= 0 && strncmp(_tee_supp_app_name, current->comm,
+    						strlen(_tee_supp_app_name)) && is_cap) {
+    	curr_ts = 0;
+    	record = true;
+
+    	// Get current working directory path name
+    	if (file_name[0] != '/') {
+    		path_ptr = get_pwd_path(pwd_path, PATH_MAX, &pwd_len);
+
+    		if (pwd_len < 0) {
+    			printk("Interceptor open(): current->comm %s "
+    				   " pwd path not found\n", current->comm);
+    			goto open_out;
+    		}
+    		abs_len += pwd_len + 1;
+    	}
+
+    	// Create absolute file path
+    	abs_file_name = kmalloc(abs_len, GFP_KERNEL);
+    	if (pwd_len > 0) {
+    		memcpy(abs_file_name, path_ptr, pwd_len);
+    		abs_file_name[pwd_len] = '/';
+    		pwd_len++;
+    	}
+
+    	// Create full file path
+    	strcpy(abs_file_name + pwd_len, file_name);
+
+    	// Setup operation
+    	memset(&op, 0, sizeof(TEE_Operation));
+    	op.paramTypes = TEE_PARAM_TYPES(TEE_MEMREF_TEMP_INPUT,
+    									TEE_VALUE_INPUT,
+    									TEE_NONE, TEE_NONE);
+    	op.params[0].tmpref.buffer = abs_file_name;
+    	op.params[0].tmpref.size = strlen(abs_file_name);
+    	op.params[1].value.a = current->tgid;
+    	op.params[1].value.b = fd;
+
+    	// Lock the session table
+    	mutex_lock(&sess_lock);
+
+    	hash_for_each_possible( sess_table, curr_sess, hash_list, id ) {
+			//printk( "Interceptor open(): current->comm %s abs_file_name %s,"
+			//	    " curr_sess->abs_name %s\n", current->comm, abs_file_name,
+			//		curr_sess->abs_name );	
+			if( curr_sess->id == id ) {
+				kfree( abs_file_name );
+				abs_file_name = curr_sess->abs_name;
+				op.params[0].tmpref.buffer = abs_file_name;
+				found = 1; // found a session with correct id
+				break;
+			}
+		}
+
+		printk( "Interceptor open(): current->comm %s session was found"
+				" = %d\n", current->comm, found );
+		if( found != 1 ) { // Session not found
+			res = TEE_OpenSession( ctx, &sess, &uuid, TEE_LOGIN_PUBLIC, 
+							        NULL, &err_origin );
+
+			cnt_a2 = read_cntpct();
+			driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 + 
+					                        cnt_a2 - cnt_b2;
+			//printk( "Interceptor open() - cnt_a2: %llu,"
+			//		" cnt_b2: %llu, cnt_b1: %llu, cnt_a1: %llu,"
+			//		" curr_ts: %d, record: %d\n", cnt_a2, cnt_b2, 
+			//		cnt_b1, cnt_a1, curr_ts, record );
+            // printk("Interceptor open(): driver_ts[%d].module_op = %llu\n", curr_ts, driver_ts[curr_ts].module_op);
+			cnt_a1 = read_cntpct();		
+			cnt_b1 = 0;
+			cnt_b2 = 0;
+			if( res != TEE_SUCCESS ) {	
+				(*sys_close_ptr)( fd );
+				fd = -1;
+				printk( "Interceptor open(): current->comm %s "
+						"TEE_OpenSession Error res %x origin %x\n", 
+						current->comm, res, err_origin ); 			
+				mutex_unlock( &sess_lock );
+				goto open_out;
+			}
+		} else {
+			sess = curr_sess->sess;
+		}
+
+		res = TEE_InvokeCommand(ctx, sess, CAPSULE_OPEN, &op, &err_origin );
+		cnt_a2 = read_cntpct();
+		driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 + 
+			 						    cnt_a2 - cnt_b2;
+		//printk( "Interceptor open() - cnt_a2: %llu,"
+		//		" cnt_b2: %llu, cnt_b1: %llu, cnt_a1: %llu,"
+		//		" curr_ts: %d, record: %d\n", cnt_a2, cnt_b2, 
+		//      cnt_b1, cnt_a1, curr_ts, record );
+		cnt_a1 = read_cntpct();		
+		cnt_b1 = 0;
+		cnt_b2 = 0;
+		if( res != TEE_SUCCESS ) { // Capsule open failed
+			(*sys_close_ptr)( fd );
+			fd = -1;
+			if( found != 1 ) {
+				TEE_CloseSession(ctx, sess);
+				cnt_a2 = read_cntpct();
+				driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 + cnt_a2 - cnt_b2;
+				//printk( "Interceptor open() - cnt_a2: %llu,"
+				//		" cnt_b2: %llu, cnt_b1: %llu, cnt_a1: %llu,"
+				//		" curr_ts: %d, record: %d\n", cnt_a2, cnt_b2, 
+				//		cnt_b1, cnt_a1, curr_ts, record );
+					cnt_a1 = read_cntpct();		
+				cnt_b1 = 0;
+				cnt_b2 = 0;
+			}		
+			printk( "Interceptor open(): TEE_InvokeCommand CAPSULE_OPEN"
+					 " Error res %x origin %x\n", res, err_origin ); 			
+			mutex_unlock( &sess_lock );
+			goto open_out;
+		}
+
+		if( truncate ) {
+			memset( &op, 0, sizeof( TEE_Operation ) );
+			op.paramTypes = TEE_PARAM_TYPES( TEE_VALUE_INPUT, TEE_NONE,
+											  TEE_NONE, TEE_NONE );
+			op.params[0].value.a = 0;	
+			res = TEE_InvokeCommand(ctx, sess, CAPSULE_FTRUNCATE, &op, 
+									  &err_origin);
+			cnt_a2 = read_cntpct();
+			driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 + 
+				 						    cnt_a2 - cnt_b2;
+			//printk( "Interceptor open() - cnt_a2: %llu,"
+			//		" cnt_b2: %llu, cnt_b1: %llu, cnt_a1: %llu,"
+			//		" curr_ts: %d, record: %d\n", cnt_a2, cnt_b2, 
+			//		cnt_b1, cnt_a1, curr_ts, record );
+			cnt_a1 = read_cntpct();		
+			cnt_b1 = 0;
+			cnt_b2 = 0;
+			if( res != TEE_SUCCESS ) { // Ftruncate failed
+				(*sys_close_ptr)( fd );
+				fd = -1;
+				if( found != 1 ) { // No session found
+					TEE_CloseSession(ctx, sess);
+  					cnt_a2 = read_cntpct();
+  					driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 + cnt_a2 - cnt_b2;
+					//printk( "Interceptor open() - cnt_a2: %llu,"
+					//		" cnt_b2: %llu, cnt_b1: %llu, cnt_a1: %llu,"
+					//		" curr_ts: %d, record: %d\n", cnt_a2, cnt_b2, 
+					//		cnt_b1, cnt_a1, curr_ts, record );
+  					cnt_a1 = read_cntpct();		
+					cnt_b1 = 0;
+					cnt_b2 = 0;
+				}		
+
+				printk( "Interceptor open(): TEE_InvokeCommand"
+						" CAPSULE_FTRUNCATE Error res %x origin %x\n", 
+						res, err_origin );		
+				mutex_unlock( &sess_lock );
+				goto open_out;
+			}
+		}
+
+		if( found != 1 ) { // Create session
+			curr_sess = kmalloc( sizeof( struct session ), GFP_KERNEL );
+			memset( curr_sess, 0, sizeof( struct session ) );
+			curr_sess->sess = sess;
+			curr_sess->refcnt = 0;
+			curr_sess->abs_name = abs_file_name; 
+		    curr_sess->id = id;	
+			hash_add( sess_table, &curr_sess->hash_list, id ); 
+		}	
+		curr_sess->refcnt++;	
+		//printk( "Interceptor open(): current->commm %s %d curr_sess->"
+		//		"refcnt %d...unlocking sess_lock\n", current->comm,
+		//		current->tgid, curr_sess->refcnt );
+		/* Unlock the sess table */	
+		mutex_unlock( &sess_lock );	
+		
+		/* Lock proc table */
+		spin_lock( &proc_lock );
+		//printk( "Interceptor open(): current->comm %s %d locked "
+		//		"proc_lock\n", current->comm, current->tgid );	
+		/* Look through the table to see if a process table
+		 * already exists */
+		hash_for_each_possible( proc_table, curr_proc, 
+						        hash_list, current->tgid ) {
+			if( current->tgid == curr_proc->procid ) {
+				found = 2; // found proc?
+				break;
+			}
+		}
+	
+		//printk( "Interceptor open(): current->comm %s proccess was "
+		//  	  " found = %d\n", current->comm, found );
+		
+		if( found != 2 ) { // no proc found, create one
+			curr_proc = kmalloc( sizeof( struct process ), GFP_KERNEL );
+			curr_proc->procid = current->tgid;
+			INIT_HLIST_HEAD( &curr_proc->fd_list );
+			hash_add( proc_table, &curr_proc->hash_list, curr_proc->procid );
+		}				
+	
+		//printk( "Intercept open(): curr_fd_struct list:\n" );
+		hlist_for_each_entry( curr_fd_struct, &curr_proc->fd_list, list ) {
+			if( curr_fd_struct->sess->id == id && curr_fd_struct->fd == -1 ) {
+				//printk( "Interceptor open(): no new curr_fd_struct created\n" );
+				curr_fd_struct->fd = fd;
+                // Found matching fd_struct
+                found = 3;
+				break;
+			}
+			//printk( "%d/%d\n", current->tgid, curr_fd_struct->fd );
+		}
+
+		if( found != 3 ) { // No matching fd_struct, make new one
+            //printk( "Interceptor open(): new fd_struct created\n" );
+			curr_fd_struct = kmalloc( sizeof( struct fd_struct ), GFP_KERNEL );
+			curr_fd_struct->fd = fd;
+			curr_fd_struct->sess = curr_sess;
+			hlist_add_head( &curr_fd_struct->list, &curr_proc->fd_list );		
+		}
+		//printk( "Interceptor open(): current->comm %s %d unlocking"
+		//		" proc_lock\n", current->comm, current->tgid );
+		/* Unlock the proc table */
+		spin_unlock( &proc_lock );
+    }
+
 
 open_out:
     // printk("Interceptor open(): %s(%d) %d\n", current->comm, fd, current->tgid);
+	kfree( pwd_path );
+	cnt_a2 = read_cntpct();
+	if( record ) {
+		driver_ts[curr_ts].module_op += cnt_a2 - cnt_a1;
+		//printk( "Interceptor open() - cnt_a2: %llu,"
+		//		" cnt_b2: %llu, cnt_b1: %llu, cnt_a1: %llu,"
+		//		" curr_ts: %d, record: %d\n", cnt_a2, cnt_b2, 
+		//		cnt_b1, cnt_a1, curr_ts, record );
+	}
     return fd;
 }
 

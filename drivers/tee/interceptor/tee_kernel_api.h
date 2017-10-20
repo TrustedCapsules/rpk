@@ -19,6 +19,8 @@
 #define TEE_MEM_OUTPUT  0x00000002
 
 #define TEE_PARAM_TYPE_GET(p, i) (((p) >> (i * 4)) & 0xF)
+#define TEE_PARAM_TYPES(p0, p1, p2, p3) \
+	((p0) | ((p1) << 4) | ((p2) << 8) | ((p3) << 12))
 
 #define TEE_SUCCESS                0x00000000
 #define TEE_ERROR_BAD_PARAMETERS   0xFFFF0006
@@ -98,4 +100,7 @@ int TEE_CloseSession(struct tee_context *ctx, uint32_t session);
  */
 int TEE_InvokeCommand(struct tee_context *ctx, uint32_t session, uint32_t
 	commandID, TEE_Operation *operation, uint32_t *returnOrigin);
+
+unsigned long long read_cntpct(void);
+
 #endif
