@@ -5,54 +5,56 @@
 #include <linux/err.h>
 
 static uint32_t tee_pre_process_tempref(struct tee_context *ctx, uint32_t param_type,
-	TEE_TempMemoryReference *tmpref, struct tee_param *param, struct tee_shm *shm) 
+	TEE_TempMemoryReference *tmpref, struct tee_param *param, struct tee_shm **shm) 
 {
-	uint32_t res;
+	uint32_t res = TEE_SUCCESS;
+
+	res = TEE_AllocateSharedMemory(ctx, tmpref->size, shm);
+
+	if (res != TEE_SUCCESS) {
+        printk("Alloc not successful\n");
+		return res;
+	}
 
 	switch (param_type) {
 		case TEE_MEMREF_TEMP_INPUT:
 			param->attr = TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INPUT;
-			shm->flags = TEE_MEM_INPUT;
 			break;
 		case TEE_MEMREF_TEMP_OUTPUT:
 			param->attr = TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_OUTPUT;
-			shm->flags = TEE_MEM_OUTPUT;
 			break;
 		case TEE_MEMREF_TEMP_INOUT:
 			param->attr = TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INOUT;
-			shm->flags = TEE_MEM_INPUT | TEE_MEM_OUTPUT;
 			break;
 		default:
 			return TEE_ERROR_BAD_PARAMETERS;
 	}
 
-	shm->size = tmpref->size;
-
-	res = TEE_AllocateSharedMemory(ctx, shm, tmpref->size);
-
-	if (res != TEE_SUCCESS) {
-		return res;
-	}
+	// printk("[TEE_PRE_PROCESS_TEMPREF] shm obj: %p, shm->teedev: %p, shm->kaddr:%p, "
+	// 	"shm->teedev->mutex: %p\n", *shm, (*shm)->teedev, (*shm)->kaddr,
+	// 	&(*shm)->teedev->mutex);
 
 
-	printk("Attempting to memcpy %s at %p to %p\n", tmpref->buffer,
-		tmpref->buffer, shm->kaddr);
-	memcpy(shm->kaddr, tmpref->buffer, tmpref->size);
+	// printk("[TEE_PRE_PROCESS_TEMPREF] Attempting to memcpy %s at %p to %p\n", 
+	// 	(char*) tmpref->buffer, tmpref->buffer, (*shm)->kaddr);
+	memcpy((*shm)->kaddr, tmpref->buffer, tmpref->size);
+	// printk("[TEE_PRE_PROCESS_TEMPREF] memcpy %s at %p to %p complete.\n", 
+	// 	(char*) tmpref->buffer, tmpref->buffer, (*shm)->kaddr);
 	param->u.memref.size = tmpref->size;
-	param->u.memref.shm = shm;
+	param->u.memref.shm = *shm;
 
-	return TEE_SUCCESS;
+	return res;
 }
 
 static uint32_t tee_operation_to_param(struct tee_context *ctx,
 			TEE_Operation *operation,
 			struct tee_param *params,
-			struct tee_shm *shms) {
+			struct tee_shm **shms) {
 
 	uint32_t res;
 	size_t n;
 
-	memset(shms, 0, sizeof(struct tee_shm) * TEE_CONFIG_PAYLOAD_REF_COUNT);
+	memset(shms, 0, sizeof(*shms) * TEE_CONFIG_PAYLOAD_REF_COUNT);
 
 	if (!operation) { // No operation given
 		memset(params, 0, sizeof(struct tee_param) * TEE_CONFIG_PAYLOAD_REF_COUNT);
@@ -77,8 +79,12 @@ static uint32_t tee_operation_to_param(struct tee_context *ctx,
 			case TEE_MEMREF_TEMP_INPUT:
 			case TEE_MEMREF_TEMP_OUTPUT:
 			case TEE_MEMREF_TEMP_INOUT:
+				// printk("Temp in/out: %lu, shms: %p\n", n, shms);
 				res = tee_pre_process_tempref(ctx, param_type, &operation->params[n].tmpref,
-					params + n, shms + n);
+					params + n, &shms[n]);
+				// printk("[TEE_OPERATION_TO_PARAM] shm obj: %p, shm->teedev: %p, "
+				// 	"shm->kaddr:%p, n: %lu, shms: %p\n", shms[n], shms[n]->teedev, 
+				// 	shms[n]->kaddr, n, shms);
 				if (res != TEE_SUCCESS)
 					return res;
 				break;
@@ -105,7 +111,7 @@ static void tee_post_process_tmpref(uint32_t param_type,
 }
 
 static void tee_params_to_operation(TEE_Operation *operation, struct tee_param
-	*params, struct tee_shm *shms) {
+	*params, struct tee_shm **shms) {
 	size_t n;
 
 	if (!operation) { // No operation given
@@ -128,7 +134,7 @@ static void tee_params_to_operation(TEE_Operation *operation, struct tee_param
 			case TEE_MEMREF_TEMP_OUTPUT:
 			case TEE_MEMREF_TEMP_INOUT:
 				tee_post_process_tmpref(param_type, &operation->params[n].tmpref, 
-					params + n, shms + n);
+					params + n, shms[n]);
 				break;
 			default:
 				break;
@@ -137,19 +143,28 @@ static void tee_params_to_operation(TEE_Operation *operation, struct tee_param
 }
 
 static void tee_free_temp_refs(TEE_Operation *operation,
-			struct tee_shm *shms)
+			struct tee_shm **shms)
 {
 	size_t n;
 
 	if (!operation)
 		return;
 
+    // printk("shms addr: %p\n", shms);
+
 	for (n = 0; n < TEE_CONFIG_PAYLOAD_REF_COUNT; n++) {
+		// printk("[TEE_FREE_TEMP_REFS] checking param %lu\n", n);
 		switch (TEE_PARAM_TYPE_GET(operation->paramTypes, n)) {
 		case TEE_MEMREF_TEMP_INPUT:
 		case TEE_MEMREF_TEMP_OUTPUT:
 		case TEE_MEMREF_TEMP_INOUT:
-			TEE_ReleaseSharedMemory(shms + n);
+			// printk("[TEE_FREE_TEMP_REFS] shms[n]: %p, n: %lu, shms: %p, *shms: %p "
+			// 	" *shms + n: %p\n", shms[n], n, shms, *shms, *(shms + n));
+			if (shms[n] != NULL) {
+				// printk("[TEE_FREE_TEMP_REFS] shm[n]->teedev: %p, shm[n]->kaddr:%p, \n", 
+				// 	shms[n]->teedev, shms[n]->kaddr); 
+				TEE_ReleaseSharedMemory(shms[n]);
+			}
 			break;
 		default:
 			break;
@@ -197,114 +212,51 @@ int TEE_OpenSession(struct tee_context *context, uint32_t *session, const TEE_UU
     return rc;
 }
 
-// MEDIUM
-/* int TEE_AllocateSharedMemory(tee_context *context, TEE_SharedMemory *sharedMem) {
-	// 1. Create TEE_SharedMemory object (shm_obj) --> caller does this & passes
-	//    pointer
-	// 2. Create tee_shm object (shm)
-	// 3. Get file descriptor and id from tee_shm_alloc: shm = tee_shm_alloc(ctx,
-	//    size, TEE_SHM_MAPPED | TEE_SHM_DMA_BUF); fd = tee_shm_get_fd(shm);
-	// 4. id = shm->id, flags = shm->flags, alloc_size = shm->size (flags are
-	//    unused)
-	// 5. shm_obj->buffer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
-	//    fd, 0);
-	// 6. Close fd
-	// 7. Error check
-	// 8. Set optional vars to default
+int TEE_AllocateSharedMemory(struct tee_context *context, size_t
+	size, struct tee_shm **shm) {
+	int res;
+  void *vaddr;
 
-	// NOTES: see linux/drivers/tee/tee_core.c:132 for use of tee_shm_alloc and 
-	//        see optee_client/libteec/src/tee_client_api.c:687 for client API call
-	//        this is modeled after
-}
-*/
+  // printk("[TEE_AllocateSharedMemory] attempting to allocate %lu bytes", size);
 
-int TEE_AllocateSharedMemory(struct tee_context *context, struct tee_shm *shm, size_t size) {
- //  struct tee_shm *shm;
-	// int fd;
-	// int id;
-	// uint32_t flags;
-	// size_t alloc_size;
+  *shm = tee_shm_alloc(context, size, TEE_SHM_MAPPED);
 
-  shm = tee_shm_alloc(context, size, TEE_SHM_MAPPED);
+  // printk("[TEE_AllocateSharedMemory] received address %p, shm->flags %x\n",
+  // 	*shm, *shm != NULL ? (*shm)->flags : 0);
 
-  if (!IS_ERR(shm)) {
-  	printk("Error with shm\n");
-  	char* arg = tee_shm_get_va(shm, 0);
-
-  	if (!IS_ERR(arg)) {
-  		printk("aeoighsewf;ijq;iej\n");
-  	}
+  if (IS_ERR(*shm)) {
+  	printk("Error with allocating shm: %lu\n", PTR_ERR(*shm));
+  	res = PTR_ERR(*shm);
+  	*shm = NULL;
+  	return res;
   }
-  tee_shm_get_fd(shm); // needed to increase reference count.
 
-	// if (fd < 0) {
-	// 	return 0xFFFF000C;
-	// }
+  vaddr = tee_shm_get_va(*shm, 0);
 
- //  id = shm->id;
- //  flags = shm->flags;
- //  alloc_size = shm->size;
+  if (IS_ERR(vaddr)) {
+  	printk("Error with allocating vaddr: %lu\n", PTR_ERR(vaddr));
+  	return PTR_ERR(vaddr);
+  } 
 
- //  sharedMem->buffer = mmap(NULL, sharedMem->size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
- //  close(fd);
+  // printk("[TEE_AllocateSharedMemory] shm obj: %p, shm->teedev: %p, shm->kaddr:%p, "
+  // 	"shm->teedev->mutex: %p\n", *shm, (*shm)->teedev, (*shm)->kaddr,
+  	// &(*shm)->teedev->mutex);
 
-	// if (sharedMem->buffer == (void *)(-1)) {
-	// 	sharedMem->id = -1;
-	// 	return 0xFFFF000C;
-	// }
-	// sharedMem->shadow_buffer = NULL;
-	// sharedMem->alloced_size = sharedMem->size;
-	// sharedMem->registered_fd = -1;
-  return 0;
+  return TEE_SUCCESS;
 }
 
 void TEE_ReleaseSharedMemory(struct tee_shm *shm) {
-	tee_shm_free(shm);
+// printk("[TEE_ReleaseSharedMemory] shm obj: %p, shm->teedev: %p, shm->kaddr:%p, "
+// 	"shm->teedev->mutex: %p, shm->flags: %x\n", shm, shm->teedev, shm->kaddr,
+// 	&shm->teedev->mutex, shm->flags);
+    tee_shm_free(shm);
 }
 
-
-// EASIEST
-/* int TEE_CloseSession(tee_context *ctx, uint32_t session){
-	// TODO: James start here
-	// Literally just call optee_close_session(ctx, session); --> might not need
-	// wrapper
-}
-*/
 
 int TEE_CloseSession(struct tee_context *ctx, uint32_t session) {
   return tee_client_close_session(ctx, session);
 }
 
-// HARDEST
-	// 1. Setup variables, must create an populate the tee_ioctl_invoke_arg
-	//    correctly (specifically, the num_params, func, session, and cancel_id)
-	//    Mainly look at optee_client/libteec/src/tee_client_api.c:536 for how to
-	//    do this. It will not be exact (the teec_pre_process_operation shows how it
-	//    breaks a TEEC_Operation into tee_params). Will need to call
-	//    TEE_AllocateSharedMemory to get the buffer and stuff. The main problem
-	//    is tmpmemref.
-	//
-	// NOTE: might actually need to copy the TEEC_Operation over and the methods
-	//       used to convert it.  
-/* int TEE_InvokeCommand(uint32_t session, uint32_t commandID, tee_param *param, uint32_t *returnOrigin);
-	uint64_t buf[(sizeof(struct tee_ioctl_invoke_arg) + 4 * sizeof(struct
-				 tee_ioctl_param)) / sizeof(uint64_t)] = {0};
-	struct tee_ioctl_buf_data buf_data;
-	struct tee_ioctl_invoke_arg *arg; // What is passed to tee_client_invoke
-	struct tee_ioctl_param *params; // What is passed to tee_client_invoke
-	uint32_t eorig;
-	TEE_SharedMemory shm[4];
-	int rc;
-
-	arg = (struct tee_ioctl_invoke_arg*) buf;
-	arg->num_params = 4; // TEE_CONFIG_PAYLOAD_REF_COUNT
-	params = (struct tee_ioctl_param *)(arg + 1);
-
-	arg->session = session;
-	arg->func = commandID;
-
-	// Process the param. 
-*/
 int TEE_InvokeCommand(struct tee_context *ctx, uint32_t session, uint32_t
 	cmd_id, TEE_Operation *operation, uint32_t *returnOrigin) {
 	int rc, res, eorig;
@@ -312,9 +264,15 @@ int TEE_InvokeCommand(struct tee_context *ctx, uint32_t session, uint32_t
 			TEE_CONFIG_PAYLOAD_REF_COUNT *
 				sizeof(struct tee_param)) /
 			sizeof(uint64_t)] = { 0 };
-	struct tee_shm shms[TEE_CONFIG_PAYLOAD_REF_COUNT];
+	struct tee_shm *shms[TEE_CONFIG_PAYLOAD_REF_COUNT];
 	struct tee_ioctl_invoke_arg *arg; // What is passed to tee_client_invoke
 	struct tee_param *params; // What is passed to tee_client_invoke
+
+	if (!ctx || !session) {
+		eorig = TEE_ORIGIN_API;
+		res = TEE_ERROR_BAD_PARAMETERS;
+		goto out;
+	}
 
 	// Setup arg
 	arg = (struct tee_ioctl_invoke_arg *)buf;
@@ -326,10 +284,14 @@ int TEE_InvokeCommand(struct tee_context *ctx, uint32_t session, uint32_t
 
 	operation->session = session;
 
+	// printk("TEE_InvokeCommand with session: %u, cmd_id: %u.\n", session, cmd_id);
+
 	// Convert operation to param
 	res = tee_operation_to_param(ctx, operation, params, shms);
 	if (res != TEE_SUCCESS) {
+		// printk("tee_operation_to_param error %d\n", res);
 		eorig = TEE_ORIGIN_API;
+		// printk("going to out_free_temp_refs\n");
 		goto out_free_temp_refs;
 	}
 
@@ -355,6 +317,7 @@ out:
 	if (returnOrigin)
 		*returnOrigin = eorig;
 	// return
+	// printk("[TEE_InvokeCommand] returning %d\n", rc);
 	return rc;
 }
 

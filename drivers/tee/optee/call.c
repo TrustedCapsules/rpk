@@ -24,10 +24,18 @@
 #include "optee_bench.h"
 #include "optee_breakdown.h"
 
+///*
+#ifdef CONFIG_BREAKDOWN
 volatile unsigned long long cnt_b1 = 0;
 volatile unsigned long long cnt_b2 = 0;
 volatile int curr_ts = 5;
 struct benchmarking_driver driver_ts[6];
+EXPORT_SYMBOL(curr_ts);
+EXPORT_SYMBOL(cnt_b1);
+EXPORT_SYMBOL(cnt_b2);
+EXPORT_SYMBOL(driver_ts);
+#endif
+//*/
 
 struct optee_call_waiter {
 	struct list_head list_node;
@@ -173,7 +181,9 @@ u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg)
 			param.a3 = res.a3;
 			optee_handle_rpc(ctx, &param);
 		} else {
-			driver_ts[curr_ts].rpc_cmd_count++;
+#ifdef CONFIG_BREAKDOWN
+            driver_ts[curr_ts].rpc_cmd_count++;
+#endif
 			ret = res.a0;
 			break;
 		}
@@ -234,6 +244,7 @@ int optee_open_session(struct tee_context *ctx,
 	phys_addr_t msg_parg;
 	struct optee_session *sess = NULL;
 
+#ifdef CONFIG_BREAKDOWN
 	//printk( "OPEN SESSION, clearing driver_ts\n" );
 	memset( (void*) &driver_ts, 0, sizeof( driver_ts ) );
 	//for( i = 0; i < 5 ; i++ ) {
@@ -248,6 +259,7 @@ int optee_open_session(struct tee_context *ctx,
 	//}		
 	cnt_b1 = 0;
 	cnt_b2 = 0;
+#endif
 
 	/* +2 for the meta parameters added below */
 	shm = get_msg_arg(ctx, arg->num_params + 2, &msg_arg, &msg_parg);
@@ -337,6 +349,7 @@ int optee_close_session(struct tee_context *ctx, u32 session)
 	msg_arg->session = session;
 	optee_do_call_with_arg(ctx, msg_parg);
 
+#ifdef CONFIG_BREAKDOWN
 	for( i = 0; i < 5 ; i++ ) {
 	printk( "%d: %llu %llu %llu %llu %llu %llu %llu\n", i,
 			driver_ts[i].module_op, 
@@ -347,6 +360,7 @@ int optee_close_session(struct tee_context *ctx, u32 session)
 			driver_ts[i].rpc_net_count, 
 			driver_ts[i].rpc_other_count );	
 	}
+#endif
 
 	tee_shm_free(shm);
 	return 0;

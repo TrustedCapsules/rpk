@@ -28,8 +28,13 @@ struct benchmarking_driver {
 	unsigned long long  rpc_other_count; /*ta, irq, suspend, wait_queue*/
 };
 
-extern struct benchmarking_driver driver_ts[6];
-volatile extern unsigned long long cnt_b1, cnt_b2; // might need volatile
-volatile extern int curr_ts;
-
+/*
+struct benchmarking_driver driver_ts[6];
+volatile unsigned long long cnt_b1 = 0, cnt_b2 = 0; // might need volatile
+volatile int curr_ts = 5;
+EXPORT_SYMBOL(curr_ts);
+EXPORT_SYMBOL(cnt_b1);
+EXPORT_SYMBOL(cnt_b2);
+EXPORT_SYMBOL(driver_ts);
+*/
 #endif /*OPTEE_BREAKDOWN_H*/

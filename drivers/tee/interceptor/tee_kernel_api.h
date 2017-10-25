@@ -65,7 +65,8 @@ typedef struct {
  * Should operate the exact same as the client version (TEEC*), but can be
  * called from the kernel driver.
  */
-int TEE_AllocateSharedMemory(struct tee_context *context, struct tee_shm *shm, size_t size);
+int TEE_AllocateSharedMemory(struct tee_context *context, size_t size, struct
+	tee_shm **shm);
 
 /*
  * TEE_ReleaseSharedMemory() - Frees shared memory for TEE.

@@ -7,6 +7,11 @@ config TEE
 	  This implements a generic interface towards a Trusted Execution
 	  Environment (TEE).
 
+config BREAKDOWN
+    bool "OPTEE Breakdown config"
+    help
+        Enables the breakdown code in the OPTEE and interceptor modules
+
 if TEE
 
 menu "TEE drivers"

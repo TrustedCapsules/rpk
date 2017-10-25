@@ -83,11 +83,12 @@ DEFINE_HASHTABLE(proc_table, 10);
  */
 DEFINE_HASHTABLE(sess_table, 10);
 
-volatile unsigned long long cnt_b1 = 0;
-volatile unsigned long long cnt_b2 = 0;
-volatile int curr_ts = 5;
-struct benchmarking_driver driver_ts[6];
-
+#ifdef CONFIG_BREAKDOWN
+volatile extern unsigned long long cnt_b1;
+volatile extern unsigned long long cnt_b2;
+volatile extern int curr_ts;
+extern struct benchmarking_driver driver_ts[6];
+#endif
 
 /* RW/RO stuff
  */
@@ -105,8 +106,10 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
     uint32_t		res;
 
     // Breakdown params
+#ifdef CONFIG_BREAKDOWN
     unsigned long long  cnt_a1, cnt_a2;
     bool                record = false;
+#endif
 
     // Other params
     sys_openat_type     sys_openat_ptr = (sys_openat_type) sys_openat_addr;
@@ -130,7 +133,9 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
     }
 
     fd = (*sys_openat_ptr)(dirfd, file_name, flags, mode);
+#ifdef CONFIG_BREAKDOWN
     cnt_a1 = read_cntpct();
+#endif
 
     // TODO: why?
     if (fd < 0) {
@@ -154,8 +159,10 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
     // TODO: Perform capsule logic
     if (fd >= 0 && strncmp(_tee_supp_app_name, current->comm,
     						strlen(_tee_supp_app_name)) && is_cap) {
+#ifdef CONFIG_BREAKDOWN
     	curr_ts = 0;
     	record = true;
+#endif
 
     	// Get current working directory path name
     	if (file_name[0] != '/') {
@@ -206,23 +213,24 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
 			}
 		}
 
-		printk( "Interceptor open(): current->comm %s session was found"
-				" = %d\n", current->comm, found );
+		// printk( "Interceptor open(): current->comm %s session was found"
+		// 		" = %d\n", current->comm, found );
 		if( found != 1 ) { // Session not found
-			res = TEE_OpenSession( ctx, &sess, &uuid, TEE_LOGIN_PUBLIC, 
+			res = TEE_OpenSession(ctx, &sess, &uuid, TEE_LOGIN_PUBLIC, 
 							        NULL, &err_origin );
-
+#ifdef CONFIG_BREAKDOWN
 			cnt_a2 = read_cntpct();
 			driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 + 
 					                        cnt_a2 - cnt_b2;
-			//printk( "Interceptor open() - cnt_a2: %llu,"
+			//printk(KERN_DEBUG  "Interceptor open() - cnt_a2: %llu,"
 			//		" cnt_b2: %llu, cnt_b1: %llu, cnt_a1: %llu,"
 			//		" curr_ts: %d, record: %d\n", cnt_a2, cnt_b2, 
 			//		cnt_b1, cnt_a1, curr_ts, record );
-            // printk("Interceptor open(): driver_ts[%d].module_op = %llu\n", curr_ts, driver_ts[curr_ts].module_op);
+            // printk(KERN_DEBUG "Interceptor open(): driver_ts[%d].module_op = %llu\n", curr_ts, driver_ts[curr_ts].module_op);
 			cnt_a1 = read_cntpct();		
 			cnt_b1 = 0;
 			cnt_b2 = 0;
+#endif
 			if( res != TEE_SUCCESS ) {	
 				(*sys_close_ptr)( fd );
 				fd = -1;
@@ -236,31 +244,37 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
 			sess = curr_sess->sess;
 		}
 
+		// printk("Teedev: %p\n", ctx->teedev);
+
 		res = TEE_InvokeCommand(ctx, sess, CAPSULE_OPEN, &op, &err_origin );
+#ifdef CONFIG_BREAKDOWN
 		cnt_a2 = read_cntpct();
 		driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 + 
 			 						    cnt_a2 - cnt_b2;
-		//printk( "Interceptor open() - cnt_a2: %llu,"
+		//printk(KERN_DEBUG  "Interceptor open() - cnt_a2: %llu,"
 		//		" cnt_b2: %llu, cnt_b1: %llu, cnt_a1: %llu,"
 		//		" curr_ts: %d, record: %d\n", cnt_a2, cnt_b2, 
 		//      cnt_b1, cnt_a1, curr_ts, record );
 		cnt_a1 = read_cntpct();		
 		cnt_b1 = 0;
 		cnt_b2 = 0;
+#endif
 		if( res != TEE_SUCCESS ) { // Capsule open failed
 			(*sys_close_ptr)( fd );
 			fd = -1;
 			if( found != 1 ) {
 				TEE_CloseSession(ctx, sess);
+#ifdef CONFIG_BREAKDOWN
 				cnt_a2 = read_cntpct();
 				driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 + cnt_a2 - cnt_b2;
-				//printk( "Interceptor open() - cnt_a2: %llu,"
+				//printk(KERN_DEBUG  "Interceptor open() - cnt_a2: %llu,"
 				//		" cnt_b2: %llu, cnt_b1: %llu, cnt_a1: %llu,"
 				//		" curr_ts: %d, record: %d\n", cnt_a2, cnt_b2, 
 				//		cnt_b1, cnt_a1, curr_ts, record );
 					cnt_a1 = read_cntpct();		
 				cnt_b1 = 0;
 				cnt_b2 = 0;
+#endif
 			}		
 			printk( "Interceptor open(): TEE_InvokeCommand CAPSULE_OPEN"
 					 " Error res %x origin %x\n", res, err_origin ); 			
@@ -275,30 +289,34 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
 			op.params[0].value.a = 0;	
 			res = TEE_InvokeCommand(ctx, sess, CAPSULE_FTRUNCATE, &op, 
 									  &err_origin);
+#ifdef CONFIG_BREAKDOWN
 			cnt_a2 = read_cntpct();
 			driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 + 
 				 						    cnt_a2 - cnt_b2;
-			//printk( "Interceptor open() - cnt_a2: %llu,"
+			//printk(KERN_DEBUG  "Interceptor open() - cnt_a2: %llu,"
 			//		" cnt_b2: %llu, cnt_b1: %llu, cnt_a1: %llu,"
 			//		" curr_ts: %d, record: %d\n", cnt_a2, cnt_b2, 
 			//		cnt_b1, cnt_a1, curr_ts, record );
 			cnt_a1 = read_cntpct();		
 			cnt_b1 = 0;
 			cnt_b2 = 0;
+#endif
 			if( res != TEE_SUCCESS ) { // Ftruncate failed
 				(*sys_close_ptr)( fd );
 				fd = -1;
 				if( found != 1 ) { // No session found
 					TEE_CloseSession(ctx, sess);
+#ifdef CONFIG_BREAKDOWN
   					cnt_a2 = read_cntpct();
   					driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 + cnt_a2 - cnt_b2;
-					//printk( "Interceptor open() - cnt_a2: %llu,"
+					//printk(KERN_DEBUG  "Interceptor open() - cnt_a2: %llu,"
 					//		" cnt_b2: %llu, cnt_b1: %llu, cnt_a1: %llu,"
 					//		" curr_ts: %d, record: %d\n", cnt_a2, cnt_b2, 
 					//		cnt_b1, cnt_a1, curr_ts, record );
   					cnt_a1 = read_cntpct();		
 					cnt_b1 = 0;
 					cnt_b2 = 0;
+#endif
 				}		
 
 				printk( "Interceptor open(): TEE_InvokeCommand"
@@ -318,7 +336,9 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
 		    curr_sess->id = id;	
 			hash_add( sess_table, &curr_sess->hash_list, id ); 
 		}	
-		curr_sess->refcnt++;	
+		// printk("Session refcnt before: %d\n", curr_sess->refcnt);
+		curr_sess->refcnt++;
+		// printk("Session refcnt after: %d\n", curr_sess->refcnt);
 		//printk( "Interceptor open(): current->commm %s %d curr_sess->"
 		//		"refcnt %d...unlocking sess_lock\n", current->comm,
 		//		current->tgid, curr_sess->refcnt );
@@ -378,14 +398,16 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
 open_out:
     // printk("Interceptor open(): %s(%d) %d\n", current->comm, fd, current->tgid);
 	kfree( pwd_path );
+#ifdef CONFIG_BREAKDOWN
 	cnt_a2 = read_cntpct();
 	if( record ) {
 		driver_ts[curr_ts].module_op += cnt_a2 - cnt_a1;
-		//printk( "Interceptor open() - cnt_a2: %llu,"
+		//printk(KERN_DEBUG  "Interceptor open() - cnt_a2: %llu,"
 		//		" cnt_b2: %llu, cnt_b1: %llu, cnt_a1: %llu,"
 		//		" curr_ts: %d, record: %d\n", cnt_a2, cnt_b2, 
 		//		cnt_b1, cnt_a1, curr_ts, record );
 	}
+#endif
     return fd;
 }
 
@@ -394,48 +416,130 @@ asmlinkage int open(const char* file_name, int flags, int mode) {
 }
 
 asmlinkage int close(int fd) {
-    curr_ts = 1;
-    sys_close_type  sys_close_ptr = (sys_close_type)sys_close_addr;
+	TEE_Operation op;
+	uint32_t res;
+	uint32_t err_origin;
 
-    // TODO: perform capsule logic
+    sys_close_type  sys_close_ptr = (sys_close_type)sys_close_addr;
+    int found = 0;
+    struct process *curr_proc;
+    struct fd_struct *curr_fd_struct;
+
+#ifdef CONFIG_BREAKDOWN
+    bool record = false;
+    unsigned long long cnt_a1, cnt_a2;
+    cnt_a1 = read_cntpct();
+#endif
+
+
+    spin_lock(&proc_lock);
+
+  /* Get the process's fd_struct list */
+  hash_for_each_possible( proc_table, curr_proc, 
+				          hash_list, current->tgid ) {
+  	if( current->tgid == curr_proc->procid ) {
+		found = 1;
+		break;
+	}
+  }
+
+
+  /* Get the fd */
+  if( found == 1 ) {
+	// printk( "Interceptor close(): %d curr_fd_struct list\n", fd );
+	hlist_for_each_entry( curr_fd_struct, &curr_proc->fd_list, list ) {
+		// printk( "%d/%d\n", current->tgid, curr_fd_struct->fd );
+		if( fd == curr_fd_struct->fd ) {
+#ifdef CONFIG_BREAKDOWN
+			curr_ts = 1;
+			record = true;
+#endif
+  			//printk( "Interceptor close(): found = %d/%d, filename: %s"
+			//		"...Unlocking proc_lock\n", curr_proc->procid, 
+			//		curr_fd_struct->fd, curr_fd_struct->sess->abs_name );
+			curr_fd_struct->fd = -1;
+			// printk( "Removing %d/%d\n", current->tgid, curr_fd_struct->fd );
+			spin_unlock( &proc_lock );
+			memset( &op, 0, sizeof( TEE_Operation ) );
+  			op.paramTypes = TEE_PARAM_TYPES( TEE_VALUE_INPUT, TEE_NONE,
+	  				 	                      TEE_NONE, TEE_NONE );
+			op.params[0].value.a = current->tgid;
+			op.params[0].value.b = fd;
+
+			res = TEE_InvokeCommand(ctx, curr_fd_struct->sess->sess, 
+							          CAPSULE_CLOSE, &op, &err_origin ); 
+			//printk( "cnt_b1: %llu\n", cnt_b1 );	
+#ifdef CONFIG_BREAKDOWN
+			cnt_a2 = read_cntpct();
+  			driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 + cnt_a2 - cnt_b2;
+			//printk(KERN_DEBUG  "Interceptor close() - cnt_a2: %llu, cnt_b2: %llu,"
+			//		" cnt_b1: %llu, cnt_a1: %llu, curr_ts: %d, "
+			//		" record: %d\n", cnt_a2, cnt_b2, cnt_b1, cnt_a1,
+			//	 	curr_ts, record );
+  			cnt_a1 = read_cntpct();		
+			cnt_b1 = 0;
+			cnt_b2 = 0;
+#endif
+
+			if( res != TEE_SUCCESS ) {
+				printk( "Interceptor close(): Invoked CAPSULE_CLOSE error"
+						" res %x err_origin %x\n", res, err_origin );
+			}
+			goto close_out;
+		}
+	}	
+  }
+
+  /* Unlock process lock */
+  spin_unlock( &proc_lock );
 
 close_out:
-    // printk("Interceptor close(): %s(%d) %d\n", current->comm, fd, current->tgid);
+  //printk( "Interceptor close(): exit\n" );
+#ifdef CONFIG_BREAKDOWN
+  cnt_a2 = read_cntpct();
+  if( record ) {
+	driver_ts[curr_ts].module_op += cnt_a2 - cnt_a1;
+	//printk(KERN_DEBUG  "Interceptor close() - cnt_a2: %llu, cnt_b2: %llu,"
+	//		" cnt_b1: %llu, cnt_a1: %llu, curr_ts: %d, "
+	//		" record: %d\n", cnt_a2, cnt_b2, cnt_b1, cnt_a1,
+	//	 	curr_ts, record );
+  } 
+#endif
     return (*sys_close_ptr)(fd);
 }
 
 
 asmlinkage int lstat(const char *pathname, struct stat *buf) {
-	// int id;
+	int id;
 	sys_lstat_type sys_lstat_ptr = (sys_lstat_type) sys_lstat_addr;
 	int ret = (*sys_lstat_ptr)( pathname, buf );
 
 	//printk( "Interceptor lstat():\n" );
- //  	if( strncmp( _tee_supp_app_name, current->comm, strlen(_tee_supp_app_name) ) ) {
-	// 	if( S_ISREG( buf->st_mode ) ) {
-	// 		printk( "Interceptor stat(): \n" );
- //  			if( is_capsule( pathname, &id ) ){
-	// 			printk( "Interceptor stat(): trusted capsule 0x%08x\n", id );
-	// 		}
-	// 	}
-	// }
+  	if( strncmp( _tee_supp_app_name, current->comm, strlen(_tee_supp_app_name) ) ) {
+		if( S_ISREG( buf->st_mode ) ) {
+			printk( "Interceptor stat(): \n" );
+  			if( is_capsule( pathname, &id ) ){
+				printk( "Interceptor stat(): trusted capsule 0x%08x\n", id );
+			}
+		}
+	}
     return ret;
 }
 
 asmlinkage int stat(const char *pathname, struct stat *buf) {
-	// int id;
+	int id;
 	sys_stat_type sys_stat_ptr = (sys_stat_type) sys_stat_addr;
 	int ret = (*sys_stat_ptr)( pathname, buf );
 
 	//printk( "Interceptor stat():\n" );
- //  	if( strncmp( _tee_supp_app_name, current->comm, strlen(_tee_supp_app_name) ) ) {
-	// 	if( S_ISREG( buf->st_mode ) ) {
-	// 		printk( "Interceptor stat():\n" );
- //  			if( is_capsule( pathname, &id ) ){
-	// 			printk( "Interceptor stat(): trusted capsule 0x%08x\n", id );
-	// 		}
-	// 	}
-	// }
+  	if( strncmp( _tee_supp_app_name, current->comm, strlen(_tee_supp_app_name) ) ) {
+		if( S_ISREG( buf->st_mode ) ) {
+			printk( "Interceptor stat():\n" );
+  			if( is_capsule( pathname, &id ) ){
+				printk( "Interceptor stat(): trusted capsule 0x%08x\n", id );
+			}
+		}
+	}
     return ret;
 }
 
@@ -447,95 +551,688 @@ asmlinkage int newfstatat(int dirfd, const char *pathname, struct stat *buf,
 }
 
 asmlinkage int fstat(int fd, struct stat *buf) {
+	TEE_Operation op;
+	uint32_t res;
+	uint32_t err_origin;
+
     sys_fstat_type  sys_fstat_ptr = (sys_fstat_type) sys_fstat_addr;
     int ret = 0;
-
-    // TODO: add other variables
+    struct process *curr_proc;
+    struct fd_struct *curr_fd_struct;
+    int found = 0;
 
     ret = (*sys_fstat_ptr)(fd, buf);
 
-    // TODO: perform capsule logic
+if( ret < 0 ) return ret;
 
-    // printk("Interceptor fstat(): %s(%d) %d\n", current->comm, fd, current->tgid);
+  /* Lock proccess lock */ 
+  spin_lock( &proc_lock );
+  /* Get the process's fd_struct list */
+  hash_for_each_possible( proc_table, curr_proc, 
+				          hash_list, current->tgid ) {
+  	if( current->tgid == curr_proc->procid ) {
+		found = 1;
+		break;
+	}
+  }
 
-fstat_out:
-    return ret;
+  /* Get the fd */
+  if( found == 1 ) {
+	hlist_for_each_entry( curr_fd_struct, &curr_proc->fd_list, list ) {
+		if( fd == curr_fd_struct->fd ) {
+			spin_unlock( &proc_lock );
+			memset( &op, 0, sizeof( TEE_Operation ) );
+  			op.paramTypes = TEE_PARAM_TYPES( TEE_VALUE_INPUT, 
+							                  TEE_VALUE_OUTPUT,
+	  				 	                      TEE_NONE, TEE_NONE );
+			op.params[0].value.a = current->tgid;
+			op.params[0].value.b = fd;
+			res = TEE_InvokeCommand(ctx, curr_fd_struct->sess->sess, 
+							          CAPSULE_FSTAT, &op, &err_origin ); 
+			if( res != TEE_SUCCESS ) {
+				ret = -1;
+				printk( "Interceptor fstat(): Invoked CAPSULE_FSTAT error"
+						" res %x err_origin %x\n", res, err_origin );
+			} else {
+				buf->st_size = op.params[1].value.a;
+			}
+  			//printk( "Interceptor fstat(): Current comm %s %d/%d on a trusted capsule (%ld B)\n",
+			//	 	current->comm, current->tgid, fd, buf->st_size );
+			goto fstat_exit;
+		}
+	}	
+  }
+  /* Unlock process lock */
+  spin_unlock( &proc_lock );
+fstat_exit:
+  return ret;
 }
 
 asmlinkage off_t lseek(int fd, off_t offset, int whence) {
+	TEE_Operation op;
+	uint32_t res;
+	uint32_t err_origin;
+
     sys_lseek_type  sys_lseek_ptr = (sys_lseek_type) sys_lseek_addr;
     off_t ret = 0;
-    curr_ts = 2;
+    struct process *curr_proc;
+    struct fd_struct *curr_fd_struct;
+    int found = 0;
 
-    // TODO: add other variables
+#ifdef CONFIG_BREAKDOWN
+    bool record = false;
+    unsigned long long cnt_a1, cnt_a2;
 
-    // TODO: perform capsule logic
+    cnt_a1 = read_cntpct();
+#endif
+
+  //if( current->tgid == temp_tgid && fd > 4 ) {
+  //	printk( "Interceptor lseek(): %s %d/%d (%d B)\n", current->comm, 
+  //		 	current->tgid, fd, (int) offset );
+  //}
+  /* Lock proccess lock */ 
+  spin_lock( &proc_lock );
+
+  /* Get the process's fd_struct list */
+  hash_for_each_possible( proc_table, curr_proc, 
+				          hash_list, current->tgid ) {
+  	if( current->tgid == curr_proc->procid ) {
+		found = 1;
+		break;
+	}
+  }
+
+  /* Get the fd */
+  if( found == 1 ) {
+	hlist_for_each_entry( curr_fd_struct, &curr_proc->fd_list, list ) {
+		if( fd == curr_fd_struct->fd ) {
+#ifdef CONFIG_BREAKDOWN
+			curr_ts = 2;
+			record = true;
+#endif
+  			//printk( "Interceptor lseek(): found = %d/%d, filename: %s"
+			//		" offset: %d\n", curr_proc->procid, curr_fd_struct->fd, 
+			//		curr_fd_struct->sess->abs_name, (int) offset );
+			spin_unlock( &proc_lock );
+			memset( &op, 0, sizeof( TEE_Operation ) );
+  			op.paramTypes = TEE_PARAM_TYPES( TEE_VALUE_INPUT, 
+							                  TEE_VALUE_INPUT,
+	  				 	                      TEE_VALUE_OUTPUT, 
+											  TEE_NONE );
+			op.params[0].value.a = current->tgid;
+			op.params[0].value.b = fd;
+			op.params[1].value.a = offset;
+			if( whence == SEEK_SET ) {
+				op.params[1].value.b = START; 
+			} else if( whence == SEEK_CUR ) {
+				op.params[1].value.b = CUR;
+			} else if( whence == SEEK_END ) {
+				op.params[1].value.b = END;
+			} else {
+				ret = -1;
+				goto lseek_out;
+			}
+			res = TEE_InvokeCommand(ctx, curr_fd_struct->sess->sess, 
+							          CAPSULE_LSEEK, &op, &err_origin ); 
+#ifdef CONFIG_BREAKDOWN
+  			cnt_a2 = read_cntpct();
+			//printk(KERN_DEBUG  "driver_ts[curr_ts].module_op: %llu\n",
+			//		 driver_ts[curr_ts].module_op );
+ 			driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 + cnt_a2 - cnt_b2;
+			//printk(KERN_DEBUG  "driver_ts[curr_ts].module_op: %llu\n",
+			//		 driver_ts[curr_ts].module_op );
+			//printk(KERN_DEBUG  "Interceptor LSEEK() - cnt_a2: %llu, cnt_b2: %llu,"
+			//		" cnt_b1: %llu, cnt_a1: %llu, curr_ts: %d, "
+			//		"record: %d\n", cnt_a2, cnt_b2, cnt_b1, cnt_a1,
+			//	 	curr_ts, record );
+  			cnt_a1 = read_cntpct();
+			cnt_b1 = 0;
+  			cnt_b2 = 0;
+#endif
+			if( res != TEE_SUCCESS ) {
+				ret = -1;
+				printk( "Interceptor lseek(): Invoked CAPSULE_CLOSE error"
+						" res %x err_origin %x\n", res, err_origin );
+			} else {
+				ret = op.params[2].value.a;
+			}
+			goto lseek_out;
+		}
+	}
+  }
+
+  /* Unlock process lock */
+  spin_unlock( &proc_lock );
+
 
     ret = (*sys_lseek_ptr)(fd, offset, whence);
 
     // printk("Interceptor lseek(): %s(%d) %d\n", current->comm, fd, current->tgid);
 lseek_out:
+#ifdef CONFIG_BREAKDOWN
+  cnt_a2 = read_cntpct();
+  if ( record ) {
+	driver_ts[curr_ts].module_op += cnt_a2 - cnt_a1;
+	//printk(KERN_DEBUG  "Interceptor LSEEK() - cnt_a2: %llu, cnt_b2: %llu,"
+	//		" cnt_b1: %llu, cnt_a1: %llu, curr_ts: %d, "
+	//		"record: %d\n", cnt_a2, cnt_b2, cnt_b1, cnt_a1,
+	//	 	curr_ts, record );
+  }  
+#endif
     return ret;
 }
 
 asmlinkage ssize_t pread64(int fd, void *buf, size_t count, off_t offset) {
-    sys_pread64_type    sys_pread64_ptr = (sys_pread64_type) sys_pread64_addr;
-    ssize_t ret = 0;
 
-    // TODO: add other variables
+  TEE_Operation    op;
+  uint32_t       res;
+  uint32_t          err_origin;
 
-    // TODO: perform capsule logic
+  ssize_t           ret = 0;
+  sys_pread64_type  sys_pread64_ptr = (sys_pread64_type) sys_pread64_addr;
+  struct process   *curr_proc;
+  struct fd_struct *curr_fd_struct;
+  int			    found = 0;
 
-    ret = (*sys_pread64_ptr)(fd, buf, count, offset);
+  /* Lock proccess lock */ 
+  spin_lock( &proc_lock );
+ /*
+  if( offset == 0 || offset == 9 ) { 
+  	//printk( "Interceptor pread64(): current->comm %s %d/%d/%d (%zu B @ %d)\n",
+	//		current->comm, current->tgid, current->pid, fd, count, offset );
+  }
+  */
+  /* Get the process's fd_struct list */
+  hash_for_each_possible( proc_table, curr_proc, 
+				          hash_list, current->tgid ) {
+  	
+	if( current->tgid == curr_proc->procid ) {
+		found = 1;
+		break;
+	}
+  }
 
-    // printk("Interceptor pread64(): %s(%d) %d\n", current->comm, fd, current->tgid);
+  /* Get the fd */
+  if( found == 1 ) {
+	hlist_for_each_entry( curr_fd_struct, &curr_proc->fd_list, list ) {
+		if( fd == curr_fd_struct->fd ) {
+			spin_unlock( &proc_lock );
+/*	
+			printk( "Interceptor pread64(): Invoked CAPSULE_PREAD (%zu B @ %d)"
+				" for %d/%d in sess %s\n", count, (int) offset, current->tgid, 
+				fd, curr_fd_struct->sess->abs_name );
+*/			
+			memset( &op, 0, sizeof( TEE_Operation ) );
+  			op.paramTypes = TEE_PARAM_TYPES( TEE_VALUE_INPUT,
+						   					  TEE_VALUE_INPUT,	
+							                  TEE_MEMREF_TEMP_OUTPUT,
+	  				 	                      TEE_NONE );
+			op.params[0].value.a = current->tgid;
+			op.params[0].value.b = fd;
+			op.params[1].value.a = offset;
+			op.params[2].tmpref.buffer = buf;
+			op.params[2].tmpref.size = count;
+			res = TEE_InvokeCommand(ctx, curr_fd_struct->sess->sess, 
+							          CAPSULE_PREAD, &op, &err_origin ); 
+			if( res != TEE_SUCCESS ) {
+				ret = -1;
+				printk( "Interceptor pread(): Invoked CAPSULE_PREAD error"
+						" res %x err_origin %x\n", res, err_origin );
+			} else {
+				ret = op.params[2].tmpref.size;
+			}
+			goto pread64_out;
+		}
+	}	
+  }
+
+  /* Unlock process lock */
+  spin_unlock( &proc_lock );
+
+  ret = (*sys_pread64_ptr)(fd, buf, count, offset);
+
 pread64_out:
-    return ret;
+//printk( "Interceptor read(): exit\n" );
+  return ret;
 }
 
 asmlinkage ssize_t read(int fd, void *buf, size_t count) {
-    sys_read_type   sys_read_ptr = (sys_read_type) sys_read_addr;
-    ssize_t ret = 0;
+  TEE_Operation   op;
+  uint32_t      res;
+  uint32_t         err_origin;
 
-    curr_ts = 3;
+  ssize_t          ret = 0;
+  sys_read_type    sys_read_ptr = (sys_read_type) sys_read_addr;
+  struct process   *curr_proc;
+  struct fd_struct *curr_fd_struct;
+  int			    found = 0;
 
-    // TODO: add other variables
+#ifdef CONFIG_BREAKDOWN
+  bool              record = false;
+  unsigned long long cnt_a1, cnt_a2;
 
-    // TODO: perform capsule logic
+  cnt_a1 = read_cntpct();
+#endif 
 
-    ret = (*sys_read_ptr)(fd, buf, count);
+  /* Lock proccess lock */ 
+  spin_lock( &proc_lock );
 
-    // printk("Interceptor read(): %s(%d) %d\n", current->comm, fd, current->tgid);
+  //if( current->tgid == temp_tgid && fd > 4 ) { 
+  //	printk( "Interceptor read(): current->comm %s %d/%d (%zu B)\n", 
+//		    current->comm, current->tgid, fd, count );
+//  }
+
+
+  /* Get the process's fd_struct list */
+  hash_for_each_possible( proc_table, curr_proc, 
+				          hash_list, current->tgid ) {
+  	
+  	//printk( "Interceptor read(): current->tgid %d, current->comm %s"
+	//		" curr_proc->procid\n", current->tgid, current->comm,
+	//	    curr_proc->procid );
+	if( current->tgid == curr_proc->procid ) {
+		found = 1;
+		break;
+	}
+  }
+
+  /* Get the fd */
+  if( found == 1 ) {
+	hlist_for_each_entry( curr_fd_struct, &curr_proc->fd_list, list ) {
+		if( fd == curr_fd_struct->fd ) {
+#ifdef CONFIG_BREAKDOWN
+			record = true;
+			curr_ts = 3;
+#endif
+			spin_unlock( &proc_lock );
+		
+			//printk( "Interceptor read(): Invoked CAPSULE_READ"
+			//	" for %d/%d in sess %s\n", current->tgid, fd, 
+			//	curr_fd_struct->sess->abs_name );
+
+			memset( &op, 0, sizeof( TEE_Operation ) );
+  			op.paramTypes = TEE_PARAM_TYPES( TEE_VALUE_INPUT, 
+							                  TEE_MEMREF_TEMP_OUTPUT,
+	  				 	                      TEE_NONE, TEE_NONE );
+			op.params[0].value.a = current->tgid;
+			op.params[0].value.b = fd;
+			op.params[1].tmpref.buffer = buf;
+			op.params[1].tmpref.size = count;
+			res = TEE_InvokeCommand(ctx, curr_fd_struct->sess->sess, 
+							          CAPSULE_READ, &op, &err_origin ); 
+#ifdef CONFIG_BREAKDOWN
+  			cnt_a2 = read_cntpct();
+			// printk(KERN_DEBUG  "driver_ts[curr_ts].module_op: %llu\n",
+			// 		 driver_ts[curr_ts].module_op );
+ 			driver_ts[curr_ts].module_op = driver_ts[curr_ts].module_op
+					                       + ( cnt_b1 - cnt_a1 ) 
+										   + ( cnt_a2 - cnt_b2 );
+			// printk(KERN_DEBUG  "driver_ts[curr_ts].module_op: %llu\n",
+			// 		 driver_ts[curr_ts].module_op );
+			// printk(KERN_DEBUG  "Interceptor READ() - cnt_a2: %llu, cnt_b2: %llu, "
+			// 		"cnt_b1: %llu, cnt_a1: %llu, curr_ts: %d, "
+			// 		"record: %d\n", cnt_a2, cnt_b2, cnt_b1, cnt_a1,
+			// 	 	curr_ts, record );
+  			cnt_a1 = read_cntpct();
+			cnt_b1 = 0;
+  			cnt_b2 = 0;
+#endif
+			if( res != TEE_SUCCESS ) {
+				ret = -1;
+				printk( "Interceptor read(): Invoked CAPSULE_READ error"
+						" res %x err_origin %x\n", res, err_origin );
+			} else {
+				ret = op.params[1].tmpref.size;
+			}
+			goto read_out;
+		}
+	}	
+  }
+
+  /* Unlock process lock */
+  spin_unlock( &proc_lock );
+
+  ret = (*sys_read_ptr)(fd, buf, count );
+
 read_out:
-    return ret;
+#ifdef CONFIG_BREAKDOWN
+  cnt_a2 = read_cntpct();
+  if( record ) {
+	// printk(KERN_DEBUG  "driver_ts[curr_ts].module_op: %llu\n",
+	// 		driver_ts[curr_ts].module_op );
+	driver_ts[curr_ts].module_op = driver_ts[curr_ts].module_op +
+		   						   ( cnt_a2 - cnt_a1 );
+	// printk(KERN_DEBUG  "driver_ts[curr_ts].module_op: %llu\n",
+	// 	    driver_ts[curr_ts].module_op );
+	// printk(KERN_DEBUG  "Interceptor READ() - cnt_a2: %llu, cnt_b2: %llu, "
+	// 		"cnt_b1: %llu, cnt_a1: %llu, curr_ts: %d, "
+	// 		"record: %d\n", cnt_a2, cnt_b2, cnt_b1, cnt_a1,
+	// 	 	curr_ts, record );
+  }
+#endif
+//printk( "Interceptor read(): exit\n" );
+  return ret;
+
 }
 
+// TODO: make sure all sess are converted to uint32_t and used that way
 asmlinkage ssize_t write(int fd, const void *buf, size_t count) {
-    sys_write_type  sys_write_ptr = (sys_write_type) sys_write_addr;
-    ssize_t ret = 0;
+  TEE_Operation     op;
+  uint32_t        res;
+  uint32_t      sess;
+  int sess_set = -1;
+  uint32_t           err_origin;
+  ssize_t            ret = 0;
 
-    curr_ts = 4;
+  sys_write_type     sys_write_ptr = (sys_write_type) sys_write_addr;
+  struct process    *curr_proc = NULL;
+  struct fd_struct  *curr_fd_struct = NULL;
+  char         	    *path;
+  char              *path_name;
+  int                found = 0;
 
-    // TODO: add other variables
+#ifdef CONFIG_BREAKDOWN
+  bool               record = false;
+  unsigned long long cnt_a1, cnt_a2;
 
-    // TODO: perform capsule logic
+  cnt_a1 = read_cntpct();
+#endif
+  //if( current->tgid == temp_tgid && fd > 4 ) {
+  //	printk( "Interceptor write(): %s %d/%d (%zu B)\n", current->comm,
+//	 	current->tgid, fd, count );
+ // }
 
-    ret = (*sys_write_ptr)(fd, buf, count);
+  /* Lock proccess lock */ 
+  spin_lock( &proc_lock );
 
-    // printk("Interceptor write(): %s(%d) %d\n", current->comm, fd, current->tgid);
-    return ret;
+  /* Get the process's fd_struct list */
+  hash_for_each_possible( proc_table, curr_proc, 
+				          hash_list, current->tgid ) {
+  	if( current->tgid == curr_proc->procid ) {
+		found = 1;
+		break;
+	}
+  }
+
+  /* FIXME: currently, we do not propagate encapsulation */
+  /* FIXME: we also do not handle anything other than regular files and
+   * ipv4 sockets for now */
+
+  /* Check with every opened capsule if this write to this dest is allowed.
+   * If it is a write to a capsule, we also check if that capsule allows the
+   * write to itself
+   */
+  if( found == 1 ) {
+	hlist_for_each_entry( curr_fd_struct, &curr_proc->fd_list, list ) {
+	
+		// printk( "Interceptor write(): Current comm %s(%d) %d/%d touched a trusted capsule\n", 
+				// current->comm, fd, current->tgid, curr_fd_struct->fd ); 
+
+		memset( &op, 0, sizeof( TEE_Operation ) );
+		op.paramTypes = TEE_PARAM_TYPES( TEE_VALUE_INPUT,
+										  TEE_MEMREF_TEMP_INPUT,
+										  TEE_NONE, TEE_NONE );
+		op.params[0].value.a = current->tgid;
+		op.params[0].value.b = fd;
+
+		if( is_ipv4_socket( fd ) ) {
+		/* Scenario 1: fd is network IPv4 socket */
+			path = kmalloc( IPv4_ADDR_LEN + MAX_PORT_LEN + 1, GFP_KERNEL );
+			path_name = get_ipv4_ip_port( fd, path, IPv4_ADDR_LEN + 
+													MAX_PORT_LEN + 1 );
+		
+			op.params[1].tmpref.buffer = (void*) path_name;	
+			op.params[1].tmpref.size = strlen( path_name );
+		
+		} else if( fd == curr_fd_struct->fd ) {
+  		/* Scenario 2: fd is the capsule file */
+			sess = curr_fd_struct->sess->sess;
+			sess_set = 1;
+			// printk( "Interceptor write(): is_capsule() fd %d writing to capsule %s\n",
+			// 		fd, curr_fd_struct->sess->abs_name );
+			continue;
+
+		} else if( is_reg_file( fd ) ) {
+  		/* Scenario 3: fd is another file */
+			path = kmalloc( PATH_MAX, GFP_KERNEL );
+			path_name = get_path_from_fd( fd, path, PATH_MAX );
+		
+			op.params[1].tmpref.buffer = (void*) path_name;	
+			op.params[1].tmpref.size = strlen( path_name );
+		
+			// printk( "Interceptor write(): is_reg_file() fd %d write to %s (%ld B)\n",
+			// 		 fd, path_name, count );
+		} else {
+		/* This is so our tests work, e.g. printf() to console */
+			found = 0;
+			break;
+		}
+		/* FIXME: Unlocking here may or may not be a race with open() 
+		 *        once we support multithreading */
+		spin_unlock( &proc_lock );
+		
+		res = TEE_InvokeCommand(ctx, curr_fd_struct->sess->sess,
+								  CAPSULE_WRITE_EVALUATE, &op, 
+								  &err_origin );
+		if( res != TEE_SUCCESS ) {
+			ret = -1;
+			printk( "Interceptor write(): Invoked CAPSULE_WRITE_EVALUATE"
+				    " error res %x err_origin %x for %d/%d in sess %s\n", 
+					res, err_origin, current->tgid, fd, 
+					curr_fd_struct->sess->abs_name );
+			kfree( path );
+			break;
+		} 
+		kfree( path );
+		spin_lock( &proc_lock );
+	}
+  }
+
+  /* Unlock process lock */
+  spin_unlock( &proc_lock );
+
+
+  /* Perform the write */
+  if( ret >= 0 && found > 0 ) {
+  	if( sess_set == -1 ) {
+	/* write is to a regular file or socket */
+		// printk( "Interceptor write(): tainted write to a regular file\n" );
+  // 		ret = (*sys_write_ptr)(fd, buf, count );
+	} else {
+	/* write is to a capsule accessed to this process */
+#ifdef CONFIG_BREAKDOWN
+		record = true;
+		curr_ts = 4;
+#endif
+
+		// printk( "Interceptor write(): Invoked CAPSULE_WRITE"
+		// 		" for %s %d/%d\n", current->comm, current->tgid, fd );
+
+		memset( &op, 0, sizeof( TEE_Operation ) );
+		op.paramTypes = TEE_PARAM_TYPES( TEE_VALUE_INPUT,
+										  TEE_MEMREF_TEMP_INPUT,
+										  TEE_NONE, TEE_NONE );
+		op.params[0].value.a = current->tgid;
+		op.params[0].value.b = fd;
+		op.params[1].tmpref.buffer = (void*) buf;
+	    op.params[1].tmpref.size = count;
+		
+		res = TEE_InvokeCommand(ctx, sess, CAPSULE_WRITE, &op, &err_origin );
+#ifdef CONFIG_BREAKDOWN
+		cnt_a2 = read_cntpct();
+		// printk(KERN_DEBUG "TEE_InvokeCommand finished cnt_a2 = read_cntpct");
+ 		driver_ts[curr_ts].module_op += cnt_b1 - cnt_a1 + 
+										cnt_a2 - cnt_b2;
+		// printk(KERN_DEBUG  "Interceptor WRITE() - cnt_a2: %llu, cnt_b2: %llu, "
+		// 		"cnt_b1: %llu, cnt_a1: %llu, curr_ts: %d, record: %d\n",
+		// 		cnt_a2, cnt_b2, cnt_b1, cnt_a1, curr_ts, record );
+  		cnt_a1 = read_cntpct();
+		cnt_b1 = 0;
+  		cnt_b2 = 0;
+#endif
+		if( res != TEE_SUCCESS ) {
+			ret = -1;
+			printk( "Interceptor write(): Invoked CAPSULE_WRITE"
+				    " error res %x err_origin %x for %d/%d in sess %s\n", 
+					res, err_origin, current->tgid, fd, 
+					curr_fd_struct->sess->abs_name );
+			return ret;
+		} else {
+			ret = op.params[1].tmpref.size;
+			//printk( "Interceptor write(): ret %d\n", ret );
+		}
+	}
+  } else if ( ret >= 0 ) { 
+  	ret = (*sys_write_ptr)(fd, buf, count );
+	// printk( "Interceptor write(): regular\n" );
+  }
+
+#ifdef CONFIG_BREAKDOWN
+  cnt_a2 = read_cntpct();
+  if( record ) { 
+	driver_ts[curr_ts].module_op += cnt_a2 - cnt_a1;
+	//printk(KERN_DEBUG  "Interceptor WRITE() - cnt_a2: %llu, cnt_b2: %llu, "
+	//		"cnt_b1: %llu, cnt_a1: %llu, curr_ts: %d, record: %d\n",
+	//		cnt_a2, cnt_b2, cnt_b1, cnt_a1, curr_ts, record );
+  }
+#endif
+//write_exit:
+//printk( "Interceptor write(): exit\n" );
+  return ret;
 }
 
 asmlinkage void exit(int status) {
-    sys_exit_group_type sys_exit_ptr = (sys_exit_group_type) sys_exit_group_addr;
+  TEE_Operation       op;
+  uint32_t          res;
+  uint32_t             err_origin;
 
-    // TODO: add other variables
+  sys_exit_group_type  sys_exit_ptr = (sys_exit_group_type) sys_exit_group_addr;
+  struct process      *curr_proc;
+  struct fd_struct    *curr_fd_struct;
+  struct fd_struct    *prev_fd_struct = NULL;
+  int                  found = 0;
 
-    // TODO: perform capsule logic
+  //printk( "Interceptor exit(): entry\n" );
+  /* Lock the proc_lock */
+  spin_lock( &proc_lock );
 
-    // printk("Interceptor exit(): %s(%d) %d\n", current->comm, status, current->tgid);
+  //printk( "Interceptor exit(): intercepted success\n" );
+
+  /* Look through procid to see if the process has accessed
+   * any trusted capsules. If it has, get the pointer to
+   * the fd_list
+   */
+  hash_for_each_possible( proc_table, curr_proc, 
+				          hash_list, current->tgid ) {
+  	//printk( "Interceptor exit(): found %d...looking for %d\n",
+	//		curr_proc->procid, current->tgid );
+	if( current->tgid == curr_proc->procid ) {
+		found = 1;
+		break;
+	}
+  }
+
+  if ( found == 0 ) {
+	spin_unlock( &proc_lock );
+	goto exit_out;
+  }
+
+
+  /* Remove the proccess entry from the proc_table */
+  hlist_del( &curr_proc->hash_list );
+
+  //printk( "Interceptor exit(): Process exiting, but has accesed"
+  //  	    " trusted capsules. Removed %d from proc_list...Unlock"
+  //	    " proc_lock\n", curr_proc->procid	);
+  /* Unlock the proc_lock */
+  spin_unlock( &proc_lock );
+
+  /* Iterate through each fd_struct */
+  hlist_for_each_entry( curr_fd_struct, &curr_proc->fd_list, list ) { 
+    
+	if( prev_fd_struct != NULL ) {
+		// printk("kfree of prev_fd_struct 1\n");
+		kfree( prev_fd_struct );
+		// printk("kfree of prev_fd_struct 1 done\n");
+	}
+
+  	/* Lock the sess_lock */
+	mutex_lock( &sess_lock ); 
+
+  	/* For each fd_struct, find the session struct and 
+   	* decrement its refcnt. If it is 0, remove the session
+   	* or if there are still other process that has opened
+	* the capsule, just close this fd on the TEE side
+	*/
+	// printk("Session refcnt before: %d\n", curr_fd_struct->sess->refcnt);
+	curr_fd_struct->sess->refcnt--;
+	// printk("Session refcnt after: %d\n", curr_fd_struct->sess->refcnt);
+	if( curr_fd_struct->sess->refcnt <= 0 ) {
+		// printk( "Interceptor exit(): removing session %s->refcnt %d\n", 
+		// 		curr_fd_struct->sess->abs_name, 
+		// 	    curr_fd_struct->sess->refcnt );	
+		hlist_del( &curr_fd_struct->sess->hash_list );
+		mutex_unlock( &sess_lock );
+		TEE_CloseSession(ctx, curr_fd_struct->sess->sess );
+
+
+		// printk("kfree of curr_fd_struct->sess->abs_name\n");
+		kfree( curr_fd_struct->sess->abs_name );
+		// printk("kfree of curr_fd_struct->sess\n");
+		kfree( curr_fd_struct->sess );
+		// printk("Done with kfree\n");
+	} else if( curr_fd_struct->fd > 0 ) {
+		// printk( "Interceptor exit(): closing %d/%d for %s\n", 
+		// 		curr_proc->procid, curr_fd_struct->fd, 
+		// 		curr_fd_struct->sess->abs_name );
+		mutex_unlock( &sess_lock );	
+		memset( &op, 0, sizeof( TEE_Operation ) );
+  		op.paramTypes = TEE_PARAM_TYPES( TEE_VALUE_INPUT, TEE_NONE,
+	  			 	                      TEE_NONE, TEE_NONE );
+		op.params[0].value.a = current->tgid;
+		op.params[0].value.b = curr_fd_struct->fd;
+		res = TEE_InvokeCommand(ctx, curr_fd_struct->sess->sess, 
+						          CAPSULE_CLOSE, &op, &err_origin ); 
+		if( res != TEE_SUCCESS ) {
+			printk( "Interceptor close(): Invoked CAPSULE_CLOSE error"
+					" res %x err_origin %x\n", res, err_origin );
+		}
+	} else {
+		// printk( "Interceptor exit(): %d fd %d for %s already closed\n",
+		// 		curr_proc->procid, curr_fd_struct->fd, 
+		// 		curr_fd_struct->sess->abs_name );
+		mutex_unlock( &sess_lock );
+	}
+
+	prev_fd_struct = curr_fd_struct;
+  }
+
+  if( prev_fd_struct != NULL ) {
+  	// printk("kfree of prev_fd_struct 2\n");
+	kfree( prev_fd_struct );
+	// printk("kfree of prev_fd_struct 2 done\n");
+  }
+  // printk("kfree of curr_proc\n");
+  kfree( curr_proc );
+  // printk("done\n");
+
+  //printk( "Interceptor exit(): freed all proc, sess, fd_struct\n" );
+
 exit_out:
-    (*sys_exit_ptr)(status);
+  //printk( "Interceptor exit(): exit\n" );
+  (*sys_exit_ptr)( status );
+  /* This will throw a 'noreturn' function does return warning.
+   * The kernel gets away with it by using:
+   *
+   * for(;;) {
+   *	cpu_relax();
+   * }
+   *
+   * We'll see if we need it at all.
+   */
+	for(;;) {
+		cpu_relax();
+	}
 }
 
 // Init stuff
@@ -691,6 +1388,9 @@ static int hello_init(void)
 
     // Get the context
     ctx = tee_client_open_context(NULL, optee_match, NULL, &vers);
+
+    // printk("context teedev: %p\n", ctx->teedev);
+    // printk("mutex location: %p\n", &ctx->teedev->mutex);
 
     // Find sys_call_table for this kernel
     find_sys_call_table(acquire_kernel_version(buf), &sys_call_table);
