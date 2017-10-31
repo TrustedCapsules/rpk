@@ -84,7 +84,7 @@ static uint32_t tee_operation_to_param(struct tee_context *ctx,
 					params + n, &shms[n]);
 				// printk("[TEE_OPERATION_TO_PARAM] shm obj: %p, shm->teedev: %p, "
 				// 	"shm->kaddr:%p, n: %lu, shms: %p\n", shms[n], shms[n]->teedev, 
-				// 	shms[n]->kaddr, n, shms);
+					// shms[n]->kaddr, n, shms);
 				if (res != TEE_SUCCESS)
 					return res;
 				break;
@@ -297,7 +297,7 @@ int TEE_InvokeCommand(struct tee_context *ctx, uint32_t session, uint32_t
 
 	// Call client invoke
 	rc = tee_client_invoke_func(ctx, arg, params);
-
+	// printk("tee_client_invoke_func returned %d\n", rc);
 	// Check for error
 	if (rc) {
 		printk(KERN_ERR "tee_client_invoke_func failed");

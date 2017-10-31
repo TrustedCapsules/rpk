@@ -130,9 +130,9 @@ asmlinkage int openat( int dirfd, const char *file_name, int flags, int mode) {
   //unsigned long long ts;
   if( is_cap ) { 
   	if( truncate ) {
-		printk( "Interceptor open(): 0x%08x\n", flags );
+		// printk( "Interceptor open(): 0x%08x\n", flags );
 		flags = flags & (~O_TRUNC);
-		printk( "Interceptor open(): 0x%08x\n", flags );
+		// printk( "Interceptor open(): 0x%08x\n", flags );
 	}	
   }
 
@@ -238,9 +238,9 @@ asmlinkage int openat( int dirfd, const char *file_name, int flags, int mode) {
 		/* Lock the sess table */
 		mutex_lock( &sess_lock );	
 
-		printk( "Interceptor open(): current->comm %s %s by "
-				"tgid/fd/id %d/%d/0x%08x...locked sess_lock\n", 
-				current->comm, abs_file_name, current->tgid, fd, id );
+		// printk( "Interceptor open(): current->comm %s %s by "
+		// 		"tgid/fd/id %d/%d/0x%08x...locked sess_lock\n", 
+		// 		current->comm, abs_file_name, current->tgid, fd, id );
 		//printk( "Interceptor open(): current->comm %s %s %s %s by "
 		//		"tgid/fd/id %d/%d/0x%08x...locked sess_lock\n", 
 		//		current->comm, abs_file_name, pwd_len > 0 ? path_ptr : "(nothing)",
@@ -377,7 +377,7 @@ asmlinkage int openat( int dirfd, const char *file_name, int flags, int mode) {
 			hash_add( proc_table, &curr_proc->hash_list, curr_proc->procid );
 		}				
 	
-		printk( "Intercept open(): curr_fd_struct list:\n" );
+		// printk( "Intercept open(): curr_fd_struct list:\n" );
 		hlist_for_each_entry( curr_fd_struct, &curr_proc->fd_list, list ) {
 			if( curr_fd_struct->sess->id == id && curr_fd_struct->fd == -1 ) {
 				//printk( "Interceptor open(): no new curr_fd_struct created\n" );
@@ -922,13 +922,13 @@ asmlinkage ssize_t write(int fd, const void *buf, size_t count) {
   if( ret >= 0 && found > 0 ) {
   	if( sess == NULL ) {
 	/* write is to a regular file or socket */
-		printk( "Interceptor write(): tainted write to a regular file\n" );
+		// printk( "Interceptor write(): tainted write to a regular file\n" );
   		ret = (*sys_write_ptr)(fd, buf, count );
 	} else {
 	/* write is to a capsule accessed to this process */
 
-		printk( "Interceptor write(): Invoked CAPSULE_WRITE"
-				" for %s %d/%d\n", current->comm, current->tgid, fd );
+		// printk( "Interceptor write(): Invoked CAPSULE_WRITE"
+		// 		" for %s %d/%d\n", current->comm, current->tgid, fd );
 
 		memset( &op, 0, sizeof( TEEC_Operation ) );
 		op.paramTypes = TEEC_PARAM_TYPES( TEEC_VALUE_INPUT,
