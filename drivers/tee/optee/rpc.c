@@ -407,7 +407,7 @@ static void handle_rpc_func_cmd(struct tee_context *ctx, struct optee *optee,
 		handle_rpc_func_cmd_get_time(arg);
 		break;
 	case OPTEE_MSG_RPC_CMD_WAIT_QUEUE:
-        // driver_ts[curr_ts].rpc_peripheral_count++;
+        driver_ts[curr_ts].rpc_peripheral_count++;
 		handle_rpc_func_cmd_wq(optee, arg);
 		break;
 	case OPTEE_MSG_RPC_CMD_SUSPEND:

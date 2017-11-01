@@ -137,24 +137,60 @@ static struct optee_session *find_session(struct optee_context_data *ctxdata,
  * optee_do_call_with_arg() - Do an SMC to OP-TEE in secure world
  * @ctx:	calling context
  * @parg:	physical address of message to pass to secure world
+ * @cmd:	optee msg command (for breakdown benchmarks)
  *
  * Does and SMC to OP-TEE in secure world and handles eventual resulting
  * Remote Procedure Calls (RPC) from OP-TEE.
  *
  * Returns return code from secure world, 0 is OK
  */
-u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg)
+u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg, u32 cmd)
 {
 	struct optee *optee = tee_get_drvdata(ctx->teedev);
 	struct optee_call_waiter w;
 	struct optee_rpc_param param = { };
 	u32 ret;
+	int i;
 
 	param.a0 = OPTEE_SMC_CALL_WITH_ARG;
 	reg_pair_from_64(&param.a1, &param.a2, parg);
     
+
+    if (cmd == OPTEE_MSG_CMD_OPEN_SESSION) {
+		printk( "OPEN SESSION, clearing driver_ts\n" );
+		memset( (void*) &driver_ts, 0, sizeof( driver_ts ) );
+		for( i = 0; i < 5 ; i++ ) {
+		printk( "%d: %llu %llu %llu %llu %llu %llu %llu\n", i,
+				driver_ts[i].module_op, 
+				driver_ts[i].rpc_peripheral_count,
+				driver_ts[i].rpc_shm_count, 
+				driver_ts[i].rpc_cmd_count, 
+				driver_ts[i].rpc_fs_count, 
+				driver_ts[i].rpc_net_count, 
+				driver_ts[i].rpc_other_count );	
+		}		
+		cnt_b1 = 0;
+		cnt_b2 = 0;
+    }
+
+	if (cmd == OPTEE_MSG_CMD_CLOSE_SESSION) {
+		printk( "CLOSE SESSION, displaying driver_ts\n" );
+		for( i = 0; i < 5 ; i++ ) {
+		printk( "%d: %llu %llu %llu %llu %llu %llu %llu\n", i,
+				driver_ts[i].module_op, 
+				driver_ts[i].rpc_peripheral_count,
+				driver_ts[i].rpc_shm_count, 
+				driver_ts[i].rpc_cmd_count, 
+				driver_ts[i].rpc_fs_count, 
+				driver_ts[i].rpc_net_count, 
+				driver_ts[i].rpc_other_count );	
+		}
+	}
+
+
     /* Initialize waiter */
 	optee_cq_wait_init(&optee->call_queue, &w);
+	cnt_b1 = read_cntpct();
 	while (true) {
 		struct arm_smccc_res res;
 
@@ -184,6 +220,8 @@ u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg)
 			break;
 		}
 	}
+
+	cnt_b2 = read_cntpct();
 
 	/*
 	 * We're done with our thread in secure world, if there's any
@@ -239,22 +277,6 @@ int optee_open_session(struct tee_context *ctx,
 	struct optee_msg_arg *msg_arg;
 	phys_addr_t msg_parg;
 	struct optee_session *sess = NULL;
-	int i;
-
-	printk( "OPEN SESSION, clearing driver_ts\n" );
-	memset( (void*) &driver_ts, 0, sizeof( driver_ts ) );
-	for( i = 0; i < 5 ; i++ ) {
-	printk( "%d: %llu %llu %llu %llu %llu %llu %llu\n", i,
-			driver_ts[i].module_op, 
-			driver_ts[i].rpc_peripheral_count,
-			driver_ts[i].rpc_shm_count, 
-			driver_ts[i].rpc_cmd_count, 
-			driver_ts[i].rpc_fs_count, 
-			driver_ts[i].rpc_net_count, 
-			driver_ts[i].rpc_other_count );	
-	}		
-	cnt_b1 = 0;
-	cnt_b2 = 0;
 
 	/* +2 for the meta parameters added below */
 	shm = get_msg_arg(ctx, arg->num_params + 2, &msg_arg, &msg_parg);
@@ -286,7 +308,7 @@ int optee_open_session(struct tee_context *ctx,
 		goto out;
 	}
 
-	if (optee_do_call_with_arg(ctx, msg_parg)) {
+	if (optee_do_call_with_arg(ctx, msg_parg, msg_arg->cmd)) {
 		msg_arg->ret = TEEC_ERROR_COMMUNICATION;
 		msg_arg->ret_origin = TEEC_ORIGIN_COMMS;
 	}
@@ -324,7 +346,6 @@ int optee_close_session(struct tee_context *ctx, u32 session)
 	struct optee_msg_arg *msg_arg;
 	phys_addr_t msg_parg;
 	struct optee_session *sess;
-    int i;
 
 	/* Check that the session is valid and remove it from the list */
 	mutex_lock(&ctxdata->mutex);
@@ -342,19 +363,7 @@ int optee_close_session(struct tee_context *ctx, u32 session)
 
 	msg_arg->cmd = OPTEE_MSG_CMD_CLOSE_SESSION;
 	msg_arg->session = session;
-	optee_do_call_with_arg(ctx, msg_parg);
-
-	printk( "CLOSE SESSION, displaying driver_ts\n" );
-	for( i = 0; i < 5 ; i++ ) {
-	printk( "%d: %llu %llu %llu %llu %llu %llu %llu\n", i,
-			driver_ts[i].module_op, 
-			driver_ts[i].rpc_peripheral_count,
-			driver_ts[i].rpc_shm_count, 
-			driver_ts[i].rpc_cmd_count, 
-			driver_ts[i].rpc_fs_count, 
-			driver_ts[i].rpc_net_count, 
-			driver_ts[i].rpc_other_count );	
-	}
+	optee_do_call_with_arg(ctx, msg_parg, msg_arg->cmd);
 
 	tee_shm_free(shm);
 	return 0;
@@ -389,7 +398,7 @@ int optee_invoke_func(struct tee_context *ctx, struct tee_ioctl_invoke_arg *arg,
 	if (rc)
 		goto out;
 
-	if (optee_do_call_with_arg(ctx, msg_parg)) {
+	if (optee_do_call_with_arg(ctx, msg_parg, msg_arg->cmd)) {
 		msg_arg->ret = TEEC_ERROR_COMMUNICATION;
 		msg_arg->ret_origin = TEEC_ORIGIN_COMMS;
 	}
@@ -428,7 +437,7 @@ int optee_cancel_req(struct tee_context *ctx, u32 cancel_id, u32 session)
 	msg_arg->cmd = OPTEE_MSG_CMD_CANCEL;
 	msg_arg->session = session;
 	msg_arg->cancel_id = cancel_id;
-	optee_do_call_with_arg(ctx, msg_parg);
+	optee_do_call_with_arg(ctx, msg_parg, msg_arg->cmd);
 
 	tee_shm_free(shm);
 	return 0;

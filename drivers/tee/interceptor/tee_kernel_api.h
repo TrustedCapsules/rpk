@@ -102,6 +102,4 @@ int TEE_CloseSession(struct tee_context *ctx, uint32_t session);
 int TEE_InvokeCommand(struct tee_context *ctx, uint32_t session, uint32_t
 	commandID, TEE_Operation *operation, uint32_t *returnOrigin);
 
-unsigned long long read_cntpct(void);
-
 #endif

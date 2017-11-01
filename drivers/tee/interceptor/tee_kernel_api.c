@@ -320,14 +320,3 @@ out:
 	// printk("[TEE_InvokeCommand] returning %d\n", rc);
 	return rc;
 }
-
-unsigned long long read_cntpct(void) {
-	unsigned long long ts;
-
-#ifdef HIKEY
-	asm volatile( "mrs %0, cntpct_el0" : "=r" (ts) );
-#else
-	asm volatile( "mrcc p15, 0, %Q0, %R0, c14" : "=r" (ts) );
-#endif
-	return ts;
-}

@@ -28,13 +28,15 @@ struct benchmarking_driver {
 	unsigned long long  rpc_other_count; /*ta, irq, suspend, wait_queue*/
 };
 
-/*
-struct benchmarking_driver driver_ts[6];
-volatile unsigned long long cnt_b1 = 0, cnt_b2 = 0; // might need volatile
-volatile int curr_ts = 5;
-EXPORT_SYMBOL(curr_ts);
-EXPORT_SYMBOL(cnt_b1);
-EXPORT_SYMBOL(cnt_b2);
-EXPORT_SYMBOL(driver_ts);
-*/
+static inline unsigned long long read_cntpct(void) {
+	unsigned long long ts;
+
+// #ifdef HIKEY
+	asm volatile( "mrs %0, cntpct_el0" : "=r" (ts) );
+// #else
+// 	asm volatile( "mrcc p15, 0, %Q0, %R0, c14" : "=r" (ts) );
+// #endif
+	return ts;
+}
+
 #endif /*OPTEE_BREAKDOWN_H*/
