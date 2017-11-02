@@ -157,18 +157,18 @@ u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg, u32 cmd)
     
 
     if (cmd == OPTEE_MSG_CMD_OPEN_SESSION) {
-		printk( "OPEN SESSION, clearing driver_ts\n" );
+		// printk( "OPEN SESSION, clearing driver_ts\n" );
 		memset( (void*) &driver_ts, 0, sizeof( driver_ts ) );
-		for( i = 0; i < 5 ; i++ ) {
-		printk( "%d: %llu %llu %llu %llu %llu %llu %llu\n", i,
-				driver_ts[i].module_op, 
-				driver_ts[i].rpc_peripheral_count,
-				driver_ts[i].rpc_shm_count, 
-				driver_ts[i].rpc_cmd_count, 
-				driver_ts[i].rpc_fs_count, 
-				driver_ts[i].rpc_net_count, 
-				driver_ts[i].rpc_other_count );	
-		}		
+		// for( i = 0; i < 5 ; i++ ) {
+		// printk( "%d: %llu %llu %llu %llu %llu %llu %llu\n", i,
+		// 		driver_ts[i].module_op, 
+		// 		driver_ts[i].rpc_peripheral_count,
+		// 		driver_ts[i].rpc_shm_count, 
+		// 		driver_ts[i].rpc_cmd_count, 
+		// 		driver_ts[i].rpc_fs_count, 
+		// 		driver_ts[i].rpc_net_count, 
+		// 		driver_ts[i].rpc_other_count );	
+		// }
 		cnt_b1 = 0;
 		cnt_b2 = 0;
     }

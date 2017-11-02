@@ -204,7 +204,7 @@ asmlinkage int openat(int dirfd, const char *file_name, int flags, int mode) {
 			// 		" cnt_b2: %llu, cnt_b1: %llu, cnt_a1: %llu,"
 			// 		" curr_ts: %d, record: %d\n", cnt_a2, cnt_b2, 
 			// 		cnt_b1, cnt_a1, curr_ts, record );
-            printk("Interceptor open(): driver_ts[%d].module_op = %llu\n", curr_ts, driver_ts[curr_ts].module_op);
+            // printk("Interceptor open(): driver_ts[%d].module_op = %llu\n", curr_ts, driver_ts[curr_ts].module_op);
 			cnt_b1 = 0;
 			cnt_b2 = 0;
 			if( res != TEE_SUCCESS ) {	
